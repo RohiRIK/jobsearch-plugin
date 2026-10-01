@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "job-search": {
+      "type": "local",
+      "command": ["sh", "-c", "exec \"$(git rev-parse --show-toplevel)/job-search/scripts/jobsearch\" mcp"],
+      "enabled": true
+    }
+  }
+}

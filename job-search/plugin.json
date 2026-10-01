@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "job-search",
+  "version": "2.0.0",
+  "description": "Evidence-grounded job-search workflow: onboard a profile, research and score roles, draft market-aware CVs and cover letters that pass a machine gate, and record outcomes.",
+  "author": {
+    "name": "Rohi Rikman",
+    "url": "https://github.com/RohiRIK"
+  },
+  "homepage": "https://github.com/RohiRIK/jobsearch-plugin",
+  "repository": "https://github.com/RohiRIK/jobsearch-plugin",
+  "license": "MIT",
+  "keywords": [
+    "job-search",
+    "cv",
+    "cover-letter",
+    "ats",
+    "career"
+  ]
+}

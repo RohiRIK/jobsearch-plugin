@@ -1,0 +1,16 @@
+{
+  "name": "creative",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "casual",
+  "sectors": ["design", "marketing", "media", "entertainment", "art"],
+  "markets": ["il", "us"],
+  "style": "creative",
+  "pages": 2,
+  "features": ["rtl_support", "bullet_lists", "custom_colors", "photo_layout"],
+  "description": "Bold, visual. For creative and design roles.",
+  "assets": {
+    "photo": { "required": true, "position": "left-sidebar", "size": "3cm" },
+    "icons": { "required": true, "style": "custom-svg" }
+  }
+}

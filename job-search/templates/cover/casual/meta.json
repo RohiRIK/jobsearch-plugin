@@ -1,0 +1,16 @@
+{
+  "name": "casual",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "casual",
+  "sectors": ["design", "marketing", "media", "startup"],
+  "markets": ["il", "us"],
+  "style": "creative",
+  "pages": 1,
+  "features": ["bullet_lists", "personality", "informal_tone"],
+  "description": "Relaxed, personality-forward. For creative and casual company cultures.",
+  "assets": {
+    "signature": { "required": false },
+    "logo": { "required": false, "position": "header" }
+  }
+}

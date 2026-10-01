@@ -1,0 +1,16 @@
+{
+  "name": "banking",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "formal",
+  "sectors": ["finance", "consulting", "legal", "enterprise", "government"],
+  "markets": ["dk", "us", "eu"],
+  "style": "conservative",
+  "pages": 2,
+  "features": ["rtl_support", "bullet_lists", "section_ordering"],
+  "description": "Clean, professional. Safe default for corporate and financial roles.",
+  "assets": {
+    "photo": { "required": false, "position": "none", "size": "2.5cm" },
+    "icons": { "required": false, "style": "none" }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", "module": "ESNext", "moduleResolution": "bundler",
+    "lib": ["ESNext"], "types": ["bun-types"], "strict": true, "noImplicitAny": true,
+    "strictNullChecks": true, "skipLibCheck": true, "outDir": "dist", "rootDir": "src",
+    "declaration": true, "esModuleInterop": true, "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true, "resolveJsonModule": true
+  },
+  "include": ["src/**/*.ts"], "exclude": ["node_modules", "dist", "tests"]
+}

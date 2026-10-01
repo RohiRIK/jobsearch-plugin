@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8317:8317"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - API_KEY=${API_KEY:-}
+
+  scraper:
+    build: .
+    profiles: ["scrape"]
+    command: ["bun", "run", "tools/pipeline/cli.ts", "scrape", "--query", "${SCRAPE_QUERY:-devops}"]
+    volumes:
+      - ./data:/app/data

@@ -1,0 +1,15 @@
+{
+  "name": "classic",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "formal",
+  "sectors": ["finance", "consulting", "legal", "enterprise"],
+  "markets": ["dk", "us", "eu"],
+  "style": "conservative",
+  "pages": 1,
+  "features": ["signature", "formal_closing"],
+  "description": "Traditional cover letter. Safe default for formal applications.",
+  "assets": {
+    "signature": { "required": false }
+  }
+}

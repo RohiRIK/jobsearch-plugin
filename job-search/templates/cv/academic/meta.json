@@ -1,0 +1,16 @@
+{
+  "name": "academic",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "formal",
+  "sectors": ["research", "university", "pharma", "healthcare", "science"],
+  "markets": ["dk", "us", "eu"],
+  "style": "conservative",
+  "pages": 2,
+  "features": ["rtl_support", "publications", "section_ordering", "thesis_display"],
+  "description": "Formal, publication-focused. For academic and research roles.",
+  "assets": {
+    "photo": { "required": false, "position": "none", "size": "2.5cm" },
+    "icons": { "required": false, "style": "none" }
+  }
+}

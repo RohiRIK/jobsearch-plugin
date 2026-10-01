@@ -1,0 +1,31 @@
+#!/bin/sh
+# Run the CI gates locally, before anything leaves this machine.
+#
+# GitHub Actions on a private repo bills against a minutes allowance, and this
+# account's runs have been refusing to start since 2026-07-18 ("recent account
+# payments have failed or your spending limit needs to be increased"). A check
+# that does not run is not a check, so the same gates run here instead.
+#
+# Enable once with:  git config core.hooksPath .githooks
+# Bypass with --no-verify when you genuinely need to (a WIP branch, say).
+
+set -e
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: bun not found; skipping local gates" >&2
+  exit 0
+fi
+
+echo "pre-push: running local CI gates (skip with --no-verify)"
+
+echo "  [1/3] typecheck"
+bunx --bun tsc --noEmit
+
+echo "  [2/3] tests"
+bun test tests/
+
+echo "  [3/3] personal-data scan (tracked + history)"
+bun run scripts/scan-personal-data.ts
+bun run scripts/scan-personal-data.ts --history
+
+echo "pre-push: all gates green"

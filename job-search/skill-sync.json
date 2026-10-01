@@ -1,0 +1,24 @@
+{
+  "source": "https://github.com/RohiRIK/skills",
+  "commit": "79eaf95b96e53b532be07f4633526cc6e0c93ed0",
+  "files": {
+    "create-skill/Conventions.md": "af5dedd2c7487f57d25bf038ccbd3c225a44fec0fcab33b7ae99eab2e94231a4",
+    "create-skill/Frontmatter.md": "30650c52dabdc3df9897c54028f3d6ef515ffe68f61482fafb37456b89a5a785",
+    "create-skill/SKILL.md": "e43c6cfacb766529214e3343d2320366b84e3243c6e27352539ad2fc98d1202d",
+    "create-skill/Taxonomy.md": "93e3610b6fc9fda61bf0b5f76a39dbfbfae3d3f1fe0c8e2086a57a25ba9ded9d",
+    "create-skill/Workflows/CanonicalizeSkill.md": "f6c0d096b3979c8b21367cb137a25900e19d97200b7025b3d191e88188235e40",
+    "create-skill/Workflows/CreateSkill.md": "da00b7689a55bdc832497311bc44ec651fad8805bdab1034f5b27c6c21106cb5",
+    "create-skill/Workflows/ImproveSkill.md": "23b8ef371c8ee64df4d17f1edcace25edb350c743ef3306392a721352f7e7abc",
+    "create-skill/Workflows/OptimizeDescription.md": "cd1cef2757dc063a6dd8f47b0f1cff007a0748b5dc6cb00ab9eb3123bf285d7c",
+    "create-skill/Workflows/TestSkill.md": "3ead722e5981ad5f49ac553587bb89346f91307d13bebe440fcefaecf3b5ca44",
+    "create-skill/Workflows/UpdateSkill.md": "bf07c8f48c207aaa3d444509a42eac8604aa9c8f246adac46b25cd4ee2833c80",
+    "create-skill/Workflows/ValidateSkill.md": "d5521b134d6ac5df636bbc8aa81842b9994c56993e6a24be74ab0660691ffbeb",
+    "create-skill/WritingGuidance.md": "a805c9ce469976c1b3bac0e486cf2702cb3b154396d3e98ba1c9d8b1667e55e7",
+    "create-cli-agent/SKILL.md": "dffa9031c008aa43cec05c73d088e3ebbe1da425711979cec15677908be27720",
+    "create-cli-agent/FrameworkComparison.md": "72c140f4aecfb0889a6409d48e3c52efd59bc13061417b8f5d51d0965c6adeaa",
+    "create-cli-agent/Patterns.md": "1bd15f9a7777df017ddaf786ea57de75612abee3d89439059aa2cc2aa8560fe5",
+    "create-cli-agent/TypescriptPatterns.md": "35f0c35d6c19a3007c0800c7446e4046c1d2ab98dccf198fba7ed6b028ee4376",
+    "create-plugin/SKILL.md": "961ff1916a27eb446fd20d695ce4d3da8194d2a5768b60e14724b00db674d925",
+    "create-plugin/Workflows/CreatePlugin.md": "92b72e02f0f8598fcf6a225ced3acf27efaf1b45190acde78001d29bfe4de723"
+  }
+}

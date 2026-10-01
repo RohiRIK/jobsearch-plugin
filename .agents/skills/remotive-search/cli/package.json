@@ -1,0 +1,8 @@
+{
+  "name": "remotive-cli",
+  "version": "1.0.0",
+  "description": "CLI for the Remotive public remote-jobs API",
+  "type": "module",
+  "main": "src/cli.ts",
+  "scripts": { "start": "bun run src/cli.ts" }
+}

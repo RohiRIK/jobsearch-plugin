@@ -1,0 +1,8 @@
+{
+  "name": "wwr-cli",
+  "version": "1.0.0",
+  "description": "CLI for the We Work Remotely public RSS feed",
+  "type": "module",
+  "main": "src/cli.ts",
+  "scripts": { "start": "bun run src/cli.ts" }
+}

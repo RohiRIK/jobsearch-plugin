@@ -1,0 +1,9 @@
+{
+  "name": "",
+  "githubUsername": "",
+  "cvDir": "assets/cv",
+  "coverDir": "assets/cover_letters",
+  "sourceExt": "typ",
+  "fieldSeparator": "_",
+  "wordSeparator": "-"
+}

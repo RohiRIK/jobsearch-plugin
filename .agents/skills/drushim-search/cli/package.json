@@ -1,0 +1,10 @@
+{
+  "name": "drushim-search-cli",
+  "version": "1.0.0",
+  "description": "CLI for searching jobs on Drushim.co.il (Israeli job board)",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": { "drushim": "src/cli.ts" },
+  "scripts": { "test": "bun test" },
+  "devDependencies": { "@types/bun": "latest" }
+}

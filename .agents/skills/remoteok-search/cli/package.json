@@ -1,0 +1,8 @@
+{
+  "name": "remoteok-cli",
+  "version": "1.0.0",
+  "description": "CLI for the Remote OK public jobs API (remote/US)",
+  "type": "module",
+  "main": "src/cli.ts",
+  "scripts": { "start": "bun run src/cli.ts" }
+}

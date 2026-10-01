@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "job-search": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/jobsearch",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "JOB_SEARCH_HOME": "${user_config.data_dir}"
+      }
+    }
+  }
+}

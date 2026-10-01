@@ -1,0 +1,8 @@
+{
+  "name": "arbeitnow-cli",
+  "version": "1.0.0",
+  "description": "CLI for the Arbeitnow public job-board API (EU)",
+  "type": "module",
+  "main": "src/cli.ts",
+  "scripts": { "start": "bun run src/cli.ts" }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "rohirik",
+  "description": "Rohi Rikman's agent plugins",
+  "owner": { "name": "Rohi Rikman", "url": "https://github.com/RohiRIK" },
+  "plugins": [
+    {
+      "name": "job-search",
+      "source": "./job-search",
+      "description": "Evidence-grounded job search: profile onboarding, posting triage, market-aware CVs and cover letters behind a machine gate, outcome tracking, and a manage skill for the system itself."
+    }
+  ]
+}

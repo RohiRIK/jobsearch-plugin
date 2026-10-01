@@ -1,0 +1,16 @@
+{
+  "name": "modern",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "semi-formal",
+  "sectors": ["tech", "startup", "data", "engineering"],
+  "markets": ["us", "il", "eu"],
+  "style": "modern",
+  "pages": 1,
+  "features": ["bullet_lists", "signature", "dynamic_opening"],
+  "description": "Modern, direct. Good for tech and startup roles.",
+  "assets": {
+    "signature": { "required": false },
+    "logo": { "required": false, "position": "header" }
+  }
+}

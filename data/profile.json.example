@@ -1,0 +1,34 @@
+{
+  "identity": {
+    "name": "Example Candidate",
+    "email": "candidate@example.com",
+    "phone": "+1 202 555 0147",
+    "location": "Example City",
+    "country": "Testland",
+    "languages": ["English"],
+    "linkedin": "https://linkedin.com/in/your-profile",
+    "github": "https://github.com/your-handle",
+    "blog": "https://portfolio.example.com",
+    "headline": "Replace this placeholder with your own factual headline"
+  },
+  "education": [],
+  "experience": [],
+  "skills": [],
+  "adjacentSkills": [],
+  "projects": [],
+  "certifications": [],
+  "workPreferences": {
+    "remote": true,
+    "hybrid": true,
+    "relocation": false,
+    "maxOfficeDaysPerWeek": 3
+  },
+  "sources": {
+    "manual": true
+  },
+  "curation": {
+    "sourceOfTruth": "data/profile.json.example",
+    "method": "placeholder copied by `bun run profile:scaffold`; replace every placeholder with verified facts",
+    "lastReviewed": "2026-09-23T00:00:00.000Z"
+  }
+}

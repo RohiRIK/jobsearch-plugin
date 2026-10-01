@@ -1,0 +1,16 @@
+{
+  "name": "modern",
+  "engine": "typst",
+  "source": "template.typ",
+  "formality": "semi-formal",
+  "sectors": ["tech", "startup", "data", "engineering", "product"],
+  "markets": ["us", "il", "eu"],
+  "style": "modern",
+  "pages": 2,
+  "features": ["rtl_support", "bullet_lists", "section_ordering", "ats_single_column"],
+  "description": "Modern single-column layout with literal contact text and ATS-safe reading order.",
+  "assets": {
+    "photo": { "required": false, "position": "top-right", "size": "2.5cm" },
+    "icons": { "required": false, "style": "custom-svg" }
+  }
+}

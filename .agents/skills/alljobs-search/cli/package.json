@@ -1,0 +1,16 @@
+{
+  "name": "alljobs-search-cli",
+  "version": "1.0.0",
+  "description": "CLI for searching jobs on AllJobs.co.il (Israeli job board)",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": {
+    "alljobs": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

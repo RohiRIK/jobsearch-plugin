@@ -1,0 +1,27 @@
+{
+  "name": "job-search",
+  "description": "Evidence-grounded job-search workflow: onboard a profile, research and score roles, draft market-aware CVs and cover letters that pass a machine gate, and record outcomes.",
+  "version": "2.0.0",
+  "author": {
+    "name": "Rohi Rikman",
+    "url": "https://github.com/RohiRIK"
+  },
+  "homepage": "https://github.com/RohiRIK/jobsearch-plugin",
+  "repository": "https://github.com/RohiRIK/jobsearch-plugin",
+  "license": "MIT",
+  "keywords": [
+    "job-search",
+    "cv",
+    "cover-letter",
+    "ats",
+    "career"
+  ],
+  "userConfig": {
+    "data_dir": {
+      "type": "directory",
+      "title": "Job-search data folder",
+      "description": "Where your profile, tracker and applications live. Leave empty for ~/.local/share/job-search (or the repo's data/ when working in a checkout).",
+      "required": false
+    }
+  }
+}

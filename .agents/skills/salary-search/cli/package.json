@@ -1,0 +1,25 @@
+{
+  "name": "salary-search-cli",
+  "version": "1.0.0",
+  "description": "CLI for benchmarking company salaries against a user-provided dataset (Danish + Hebrew name matching)",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": {
+    "salary": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test --timeout 30000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bunli/core": "latest",
+    "@bunli/utils": "latest",
+    "xlsx": "^0.18.5",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/bun": "latest"
+  }
+}

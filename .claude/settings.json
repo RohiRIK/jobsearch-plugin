@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun run:*)",
+      "Bash(pdftotext:*)",
+      "Bash(jobsearch:*)"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "rohirik": {
+      "source": {
+        "source": "github",
+        "repo": "RohiRIK/jobsearch-plugin"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "job-search@rohirik": true
+  }
+}

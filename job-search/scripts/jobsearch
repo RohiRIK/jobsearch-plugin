@@ -1,0 +1,35 @@
+#!/bin/sh
+# jobsearch launcher — runs the bundled toolchain with Bun.
+# Resolves its own location (following a PATH shim symlink), so it works from
+# any working directory and from any host's plugin cache.
+set -e
+self=$0
+while [ -L "$self" ]; do
+  target=$(readlink "$self")
+  case $target in
+    /*) self=$target ;;
+    *) self=$(dirname "$self")/$target ;;
+  esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd -P)
+
+bun_bin=${JOB_SEARCH_BUN:-$(command -v bun 2>/dev/null || true)}
+if [ -z "$bun_bin" ]; then
+  for candidate in "$HOME/.bun/bin/bun" /usr/local/bin/bun /opt/homebrew/bin/bun /snap/bin/bun; do
+    if [ -x "$candidate" ]; then bun_bin=$candidate; break; fi
+  done
+fi
+if [ -z "$bun_bin" ]; then
+  printf '%s\n' '{"ok":false,"error":{"code":20,"type":"unavailable","message":"Bun is required to run jobsearch","recoverable":true,"suggestions":["curl -fsSL https://bun.sh/install | bash"]}}'
+  exit 20
+fi
+
+if [ -f "$root/dist/jobsearch.js" ]; then
+  JOB_SEARCH_PLUGIN_ROOT=$root exec "$bun_bin" "$root/dist/jobsearch.js" "$@"
+fi
+# Unbuilt checkout: run from source.
+if [ -f "$root/../scripts/jobsearch.ts" ]; then
+  exec "$bun_bin" "$root/../scripts/jobsearch.ts" "$@"
+fi
+printf '%s\n' '{"ok":false,"error":{"code":20,"type":"unavailable","message":"jobsearch bundle missing (dist/jobsearch.js)","recoverable":true,"suggestions":["reinstall the plugin","bun run plugin:build (in a checkout)"]}}'
+exit 20
