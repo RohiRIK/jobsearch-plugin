@@ -1,12 +1,8 @@
 name: Personal data
 
-# This repo's whole job is handling one person's CV, so personal data is always
-# one careless `git add -A` from being committed. Two files carrying a real
-# email, phone and LinkedIn URL reached the history that way and needed a full
-# rewrite to remove. The repo is private today, but visibility flips in two
-# clicks and clones outlive it.
-# This check BLOCKS; it never rewrites. A sanitiser that edits your commit
-# behind your back is a change nobody reviews.
+# Blocks real emails, phone numbers and LinkedIn URLs from reaching the repo.
+# It never rewrites a commit: a sanitiser that edits your work behind your
+# back is a change nobody reviews. Placeholders go in the scanner's allow-list.
 
 on:
   push:
