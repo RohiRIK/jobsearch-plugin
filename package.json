@@ -54,6 +54,7 @@
     "plugin:check": "bun run scripts/plugin/check.ts",
     "plugin:sync-skills": "bun run scripts/plugin/sync-skills.ts",
     "plugin:release": "bun run scripts/plugin/release.ts",
+    "publish:sync": "scripts/publish/sync-public.sh",
     "api": "bun run scripts/api/server.ts",
     "test": "bun test tests/",
     "doctor": "bun run scripts/doctor.ts",
