@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { existsSync, readFileSync } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
-import { buildOutputPath, buildSourcePath, loadConfig, parseFileName } from "../src/naming.js";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, extname, join, resolve } from "node:path";
+import { applicationDir, buildOutputPath, buildSourcePath, loadConfig, parseFileName, type DocConfig } from "../src/naming.js";
 import { checkAtsQuality, extractText, getPageCount } from "./verify-ats.js";
 import { compile } from "./build/cli.js";
 import { checkLayout } from "./verify-layout.js";
@@ -10,6 +10,7 @@ import { getMarketProfile } from "../src/market-profiles.js";
 import { documentNameSlug, profileDocumentName } from "../src/naming.js";
 import { Profile } from "../src/profile-schemas.js";
 import { WORKSPACE as ROOT } from "../src/paths.js";
+import { CV_LAYOUTS } from "../src/cv-options.js";
 
 const PAGE_EXPECTATIONS = { cv: [1, 2] as const, cl: [1, 1] as const };
 
@@ -30,6 +31,31 @@ Gates (in order):
 
 Output: JSON { documents: [{ file, docType, gates, pass }], pass }.
 Exit 0 only when every gate on every document passes — iterate until green.`;
+
+/**
+ * An underfilled last CV page is usually a few lines spilling over. Name the
+ * concrete moves, densest first, and the one thing never to do (issue #7).
+ */
+export function densityHint(expected: readonly [number, number], pages: number | null): string {
+  const denser = CV_LAYOUTS.filter((option) => option.density === "compact").map((option) => option.id);
+  const fewer = pages !== null && pages > expected[0] ? `; or tighten the draft to ${expected[0]} page(s), which this market allows` : "";
+  return `the last page is mostly empty: re-render with a denser layout (${denser.join(", ")}) via \`jobsearch render … --layout <id> --force\`${fewer}; or add verified evidence the profile already holds. Never pad, and never drop a true fact just to pass`;
+}
+
+/**
+ * A missing tool is fixed by installing it, never by editing the document. Before
+ * this, a missing Typst produced "fix the source errors" and "shorten or wrap the
+ * affected field", which sent agents rewriting a document that was fine.
+ */
+export function installHint(tool: string): string {
+  const how: Record<string, string> = {
+    typst: "install Typst (https://github.com/typst/typst#installation, e.g. `cargo install typst-cli` or your package manager)",
+    "@napi-rs/canvas": "run `bun install` in a checkout, or install @napi-rs/canvas next to the plugin",
+    lualatex: "install a TeX distribution with lualatex (TeX Live or MiKTeX)",
+    xelatex: "install a TeX distribution with xelatex (TeX Live or MiKTeX)",
+  };
+  return `${how[tool] ?? `install ${tool}`} and make sure it is on PATH (\`jobsearch status\` shows what is found), then rerun — the document itself needs no change`;
+}
 
 export interface Gate {
   gate: string;
@@ -75,7 +101,7 @@ export async function reevaluateDoc(
       gate: "compile",
       pass: result.status === "success",
       detail: result.status === "success" ? `compiled ${basename(pdfPath)} from current source and template imports` : (result.error ?? "compile failed"),
-      hint: result.status === "success" ? undefined : "fix the source errors above and rerun",
+      hint: result.status === "success" ? undefined : result.missingTool ? installHint(result.missingTool) : "fix the source errors above and rerun",
     });
   } else {
     gates.push({ gate: "compile", pass: null, detail: "no source file — verifying the PDF as-is" });
@@ -116,7 +142,9 @@ export async function reevaluateDoc(
       : layout.error ?? `layout defects: ${layoutFindings.join("; ")}`,
     hint: layout.pass
       ? undefined
-      : "shorten or wrap the affected field; keep text inside the safe content area and rerun reevaluate",
+      : layout.unavailable
+        ? installHint(layout.unavailable)
+        : "shorten or wrap the affected field; keep text inside the safe content area and rerun reevaluate",
   });
 
   gates.push({
@@ -127,7 +155,9 @@ export async function reevaluateDoc(
       : `underfilled final page: ${layout.underfilledPages.join(", ")}`,
     hint: layout.underfilledPages.length === 0
       ? undefined
-      : "add verified evidence, use a denser market-appropriate template, or shorten the document to its correct page budget; do not pad with empty sections",
+      : docType === "cv"
+        ? densityHint(expected, pages)
+        : "the letter's page is underfilled: add a verified, role-specific paragraph; do not pad",
   });
 
   const text = existsSync(pdfPath) ? await extractText(pdfPath) : null;
@@ -178,6 +208,23 @@ export async function reevaluateDoc(
   return { file: sourceOrPdf, docType, gates, pass };
 }
 
+/**
+ * Today's convention path, or the newest dated folder that holds the document:
+ * a gate run the day after `render` must still find what render wrote.
+ */
+export function applicationOutputPath(docType: "cv" | "cl", company: string, role: string, config: DocConfig): string {
+  const today = buildOutputPath(docType, company, role, config);
+  const exists = (pdf: string) => existsSync(resolve(ROOT, pdf)) || existsSync(resolve(ROOT, pdf.replace(/\.pdf$/, ".typ"))) || existsSync(resolve(ROOT, pdf.replace(/\.pdf$/, ".tex")));
+  if (exists(today)) return today;
+  const companyDir = dirname(applicationDir(company, config));
+  const dates = existsSync(resolve(ROOT, companyDir)) ? readdirSync(resolve(ROOT, companyDir)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse() : [];
+  for (const date of dates) {
+    const candidate = buildOutputPath(docType, company, role, config, date);
+    if (exists(candidate)) return candidate;
+  }
+  return today;
+}
+
 export async function main(): Promise<number> {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
@@ -199,6 +246,20 @@ export async function main(): Promise<number> {
     return 0;
   }
 
+  // Resolve the profile first: `application render` names files after the
+  // profile identity, so the company/role lookup must use the same name. Reading
+  // only data/config.json made a first-run workspace (no config) look for files
+  // render never wrote (issue #11). The default profile path matches render's.
+  const profilePath = resolve(process.cwd(), typeof values.profile === "string" ? values.profile : join(ROOT, "data", "profile.json"));
+  let profileName: string | undefined;
+  if (existsSync(profilePath)) {
+    try {
+      profileName = profileDocumentName(Profile.parse(JSON.parse(readFileSync(profilePath, "utf-8"))).identity) || undefined;
+    } catch {
+      profileName = undefined;
+    }
+  }
+
   const docs: Array<{ path: string; docType: "cv" | "cl" }> = [];
 
   if (typeof values.file === "string") {
@@ -207,23 +268,12 @@ export async function main(): Promise<number> {
     docs.push({ path: values.file, docType });
   } else if (typeof values.company === "string" && typeof values.role === "string") {
     const which = typeof values.type === "string" ? values.type : "both";
-    if (which === "cv" || which === "both") docs.push({ path: buildOutputPath("cv", values.company, values.role), docType: "cv" });
-    if (which === "cl" || which === "both") docs.push({ path: buildOutputPath("cl", values.company, values.role), docType: "cl" });
+    const config = profileName ? { ...loadConfig(), name: profileName } : loadConfig();
+    if (which === "cv" || which === "both") docs.push({ path: applicationOutputPath("cv", values.company, values.role, config), docType: "cv" });
+    if (which === "cl" || which === "both") docs.push({ path: applicationOutputPath("cl", values.company, values.role, config), docType: "cl" });
   } else {
     process.stderr.write(JSON.stringify({ error: "need --file or both --company and --role", code: "BAD_ARGS" }) + "\n");
     return 1;
-  }
-
-  let profileName: string | undefined;
-  if (typeof values.profile === "string") {
-    const profilePath = resolve(process.cwd(), values.profile);
-    if (existsSync(profilePath)) {
-      try {
-        profileName = profileDocumentName(Profile.parse(JSON.parse(readFileSync(profilePath, "utf-8"))).identity);
-      } catch {
-        profileName = undefined;
-      }
-    }
   }
 
   const documents: DocReport[] = [];

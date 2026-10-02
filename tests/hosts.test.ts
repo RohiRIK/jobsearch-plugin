@@ -10,10 +10,14 @@ const LAUNCHER = join(PLUGIN, "scripts", "jobsearch");
 const SKILLS = readdirSync(join(PLUGIN, "skills")).filter((d) => existsSync(join(PLUGIN, "skills", d, "SKILL.md")));
 let home: string;
 
-/** Run against the source CLI with a throwaway HOME and a PATH without real host CLIs. */
-function js(args: string[]) {
+/**
+ * Run against the source CLI with a throwaway HOME. JOB_SEARCH_BIN_PATH makes `bin`
+ * the whole binary search, so a host CLI installed on this machine stays invisible
+ * (issue #2); a test that needs one puts a fake there.
+ */
+function js(args: string[], bin = join(home, "no-bin")) {
   const proc = Bun.spawnSync([process.execPath, join(ROOT, "scripts/jobsearch.ts"), ...args], {
-    env: { ...process.env, HOME: home, PATH: "/usr/bin:/bin", JOB_SEARCH_HOME: join(home, "ws"), JOB_SEARCH_TELEMETRY: "0" },
+    env: { ...process.env, HOME: home, PATH: "/usr/bin:/bin", JOB_SEARCH_BIN_PATH: bin, JOB_SEARCH_HOME: join(home, "ws"), JOB_SEARCH_TELEMETRY: "0" },
   });
   return { code: proc.exitCode, out: JSON.parse(proc.stdout.toString()) };
 }
@@ -117,6 +121,16 @@ describe("hosts-install: per host", () => {
     expect(readdirSync(join(home, ".openclaw", "workspace", "skills")).sort()).toEqual(SKILLS.map((s) => `job-search-${s}`).sort());
   });
 
+  test("openclaw with its CLI plans the MCP registration through that CLI", () => {
+    const bin = join(home, "fake-bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "openclaw"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const run = js(["hosts-install", "--host", "openclaw", "--dry-run"], bin);
+    expect(run.code).toBe(10);
+    expect(run.out.data.changes).toContainEqual(expect.objectContaining({ action: "run", command: [join(bin, "openclaw"), "mcp", "add", "job-search", "--command", LAUNCHER, "--arg", "mcp"] }));
+    expect(js(["hosts-list"], bin).out.data.hosts.openclaw).toBe(true);
+  });
+
   test("pi: adds the plugin directory as a local package, once", () => {
     mkdirSync(join(home, ".pi", "agent"), { recursive: true });
     writeFileSync(join(home, ".pi", "agent", "settings.json"), JSON.stringify({ packages: ["npm:other"] }));
@@ -146,6 +160,25 @@ describe("hosts-uninstall and doctor", () => {
     expect(js(["hosts-doctor"]).out.data.hosts.opencode).toMatchObject({ skillsLinked: 0, mcp: false });
   });
 
+  // Issue #10: a live Hermes served the legacy tool set while the plugin looked
+  // installed. The doctor now says which server each entry starts.
+  test("doctor names a legacy MCP registration and how to replace it", () => {
+    mkdirSync(join(home, ".hermes"), { recursive: true });
+    writeFileSync(join(home, ".hermes", "config.yaml"), "mcp_servers:\n  job-search:\n    command: bun\n    args: [run, /old/checkout/scripts/mcp/server.ts]\n");
+    const legacy = js(["hosts-doctor"]).out.data.hosts.hermes;
+    expect(legacy.mcp).toBe(false);
+    expect(legacy.mcpServer).toMatchObject({ registered: "legacy", legacyEntries: ["job-search"] });
+    expect(legacy.mcpServer.hint).toContain("by hand");
+  });
+
+  test("doctor flags a leftover legacy server next to the current one", () => {
+    mkdirSync(join(home, ".hermes"), { recursive: true });
+    writeFileSync(join(home, ".hermes", "config.yaml"), `mcp_servers:\n  job-search:\n    command: ${LAUNCHER}\n    args:\n      - mcp\n  ai-job-search:\n    command: bun\n    args: [run, mcp]\n    cwd: /old/checkout\n`);
+    const both = js(["hosts-doctor"]).out.data.hosts.hermes;
+    expect(both.mcp).toBe(true);
+    expect(both.mcpServer).toMatchObject({ registered: "current", legacyEntries: ["ai-job-search"] });
+  });
+
   test("hosts-list reports presence by config directory", () => {
     mkdirSync(join(home, ".hermes"));
     const { data } = js(["hosts-list"]).out;
@@ -164,12 +197,24 @@ describe("hermes config merge", () => {
     expect(hermesConfigWithMcp(once, "/p/jobsearch")).toBe("present");
     expect(hermesConfigWithMcp(once, "/q/jobsearch")).toBe("conflict");
   });
+  // `hermes config set` writes an unquoted command and a block list; the old
+  // text match called that a conflict and refused an idempotent reinstall (issue #1).
+  test("matches by parsed value, not quoting style", () => {
+    const setterStyle = "model: x\nmcp_servers:\n  job-search:\n    command: /p/jobsearch\n    args:\n      - mcp\n    env:\n      JOB_SEARCH_HOME: /data\n";
+    expect(hermesConfigWithMcp(setterStyle, "/p/jobsearch")).toBe("present");
+    expect(hermesConfigWithMcp(setterStyle.replace("/p/", "/q/"), "/p/jobsearch")).toBe("conflict");
+    expect(hermesConfigWithMcp(setterStyle.replace("- mcp", "- serve"), "/p/jobsearch")).toBe("conflict");
+  });
+  test("refuses configs it cannot merge safely instead of writing a second key", () => {
+    expect(() => hermesConfigWithMcp("mcp_servers: {}\n", "/p/jobsearch")).toThrow(/block mapping/);
+    expect(() => hermesConfigWithMcp("mcp_servers: [\n", "/p/jobsearch")).toThrow(/cannot parse/);
+  });
 });
 
 describe("deprecated shell wrappers", () => {
   test("hermes.sh --dry-run delegates to hosts-install", () => {
     mkdirSync(join(home, ".hermes"));
-    const proc = Bun.spawnSync(["bash", join(ROOT, ".agents/install/hermes.sh"), "--dry-run"], { env: { ...process.env, HOME: home, PATH: `/usr/bin:/bin:${process.env.PATH}`, JOB_SEARCH_TELEMETRY: "0" } });
+    const proc = Bun.spawnSync(["bash", join(ROOT, ".agents/install/hermes.sh"), "--dry-run"], { env: { ...process.env, HOME: home, PATH: `/usr/bin:/bin:${process.env.PATH}`, JOB_SEARCH_BIN_PATH: join(home, "no-bin"), JOB_SEARCH_TELEMETRY: "0" } });
     expect(proc.exitCode).toBe(10);
     expect(JSON.parse(proc.stdout.toString()).data.host).toBe("hermes");
   });

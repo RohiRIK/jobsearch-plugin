@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { toolsBinDir } from "./paths.js";
 
 // Snap-packaged bun (Ubuntu) spawns with a stripped PATH, so external binaries
 // like typst/pdftotext/pdfinfo are invisible to Bun.which alone. Probe the
@@ -12,6 +13,7 @@ const REAL_HOME = process.env.HERMES_REAL_HOME ?? process.env.SNAP_REAL_HOME ?? 
 const HOME_DIRS = [...new Set([homedir(), REAL_HOME])];
 
 const EXTRA_BIN_DIRS = [
+  toolsBinDir(),
   "/usr/bin",
   "/usr/local/bin",
   "/snap/bin",
@@ -20,6 +22,17 @@ const EXTRA_BIN_DIRS = [
 ];
 
 export function resolveBin(name: string): string | null {
+  // Test seam: when set (non-empty), these directories are the whole search.
+  // Without it a test cannot simulate "openclaw is not installed" on a machine
+  // where it is.
+  const only = process.env.JOB_SEARCH_BIN_PATH;
+  if (only) {
+    for (const dir of only.split(":").filter(Boolean)) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+    return null;
+  }
   const found = Bun.which(name);
   if (found) return found;
   for (const dir of EXTRA_BIN_DIRS) {

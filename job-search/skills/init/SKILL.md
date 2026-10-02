@@ -46,7 +46,7 @@ raster check):
 
 | Missing | What stops working |
 |:--------|:-------------------|
-| `typst` | Typst CV/cover compilation (bunx typst is the fallback) |
+| `typst` | Typst CV/cover compilation. Missing: `jobsearch tools-install --tool typst --dry-run`, then `--yes` after the user agrees (installs a pinned 0.12+ release into the workspace; the npm/bunx fallback is 0.10) |
 | `pdftotext` / `pdfinfo` | The ATS text-layer gate — documents cannot be verified |
 | `lualatex` / `xelatex` | The LaTeX path only; Typst is the default |
 

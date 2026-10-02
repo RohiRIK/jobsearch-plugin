@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-10-02
+
+### Added
+- `jobsearch tools-install --tool typst` installs a pinned Typst release (0.13.1) into `<workspace>/data/tools/bin`, which binary resolution searches, so documents can be built without a hand-made PATH entry or a global install (RohiRIK/jobsearch-plugin#9).
+- `hosts-doctor` reports which MCP server each host will start (`current`, `legacy`, `other` or `none`), lists legacy servers registered under any name, and says how to replace them (RohiRIK/jobsearch-plugin#10).
+- `render --links linkedin,github,blog` chooses the profile links on the CV. The default is every link the profile has, including GitHub, which was never printed before. Render reports what it included and what it omitted (RohiRIK/jobsearch-plugin#8).
+
+### Changed
+- The brief's default language is the posting's: a stated working language first, then the language the posting is written in, then the market default. An English posting in Denmark is now briefed in English (RohiRIK/jobsearch-plugin#8).
+- `render` refuses a draft whose language differs from the posting's until `--language` confirms it (`LANGUAGE_CHOICE_REQUIRED`), and reports the profile's languages with the decision (RohiRIK/jobsearch-plugin#8).
+
+### Fixed
+- **The company/role gate finds what render wrote.** It now takes the name from the same profile render uses, and finds the newest dated folder holding the documents. Before, a workspace without `data/config.json` failed `exists` (RohiRIK/jobsearch-plugin#11).
+- **The application plan never tells the writer to prove a gap.** `mustProve` and the role thesis use only requirements the evidence supports; unsupported ones move to `openGaps` (RohiRIK/jobsearch-plugin#12).
+- **Natural salutations.** `review` rejects a recipient that names the company or role (`UNNATURAL_SALUTATION`), such as "Dear Acme — Engineer" (RohiRIK/jobsearch-plugin#8).
+- **Actionable density hint.** An underfilled CV page now names the denser layouts and the market's lower page budget. The orphan sweep covers every layout (RohiRIK/jobsearch-plugin#7).
+- **Orphaned section headings.** A heading now travels in one unbreakable block with its first entry, and a role's title row with its first bullet. The templates relied on `block(sticky:)`, which needs Typst 0.12+, while the npm `typst` fallback is 0.10. In the pilot CVs that fallback left "Certifications" alone at the foot of page 1.
+- **`strategy.sectionOrder` is honoured** (RohiRIK/jobsearch-plugin#5). The renderer passes it to the template. A section the order leaves out is appended, never dropped, and `project-first` places projects under the summary.
+- **Every CV layout renders differently** (RohiRIK/jobsearch-plugin#4). Five of the ten layout ids used to produce the default page. Each id now has its own style row, and its description says what it actually changes. `render` refuses CV templates it cannot fill (banking) with `BAD_TEMPLATE`.
+- **`GAP_AS_CLAIM` no longer rejects employer requirements** (RohiRIK/jobsearch-plugin#6). A cover-letter sentence that only attributes a requirement to the employer ("Your posting asks for…") is no longer read as a claim; one that also speaks in the first person still is.
+- **Missing toolchain gets an install hint** (RohiRIK/jobsearch-plugin#3). When Typst, a TeX engine or `@napi-rs/canvas` is missing, the gate now says to install it, instead of "fix the source errors" or "shorten or wrap the affected field".
+- **Hermes MCP entry matched by value** (RohiRIK/jobsearch-plugin#1). An entry written by `hermes config set` (unquoted command, block-list args) is recognised as already installed. An inline `mcp_servers` is refused rather than given a second key.
+- **Host tests are hermetic** (RohiRIK/jobsearch-plugin#2). `JOB_SEARCH_BIN_PATH` replaces the binary search in tests, so an installed `openclaw` or `pi` no longer changes the results.
+- An education field that repeats the degree title is no longer printed as a second line.
+
 ## 2.0.0 - 2026-10-01
 
 ### Added
@@ -11,21 +36,6 @@
 - `manage` skill (Health, Hosts, Data, Audit, Extend, Release) and the synced skill factory (`create-skill`, `create-cli-agent`, `create-plugin` from RohiRIK/skills, pinned in `skill-sync.json`).
 - Claude Code marketplace `rohirik` at the repository root; tool-less `reviewer` agent.
 - `src/paths.ts`: code root vs workspace (`JOB_SEARCH_HOME` → checkout → `~/.local/share/job-search`); host installs and data migration never touch personal data.
-
-### Changed
-- `.claude/skills` and `.claude/commands` moved into the plugin; Claude Code commands are now `/job-search:<name>`. Portal scrapers are no longer model-visible skills (`USAGE.md`), only `jobsearch scrape` sources.
-- Root `.mcp.json` removed (the plugin registers MCP); `opencode.json` runs the launcher. `.agents/install/hermes.sh` and `openclaw.sh` are thin wrappers around `jobsearch hosts-install` (one release).
-- The raster layout check loads `@napi-rs/canvas` lazily; a missing module fails the gate with a reason.
-
-### Fixed
-- A bundled build resolved templates to a non-existent directory and returned `templates.cv: null` silently; missing templates are now an `unavailable` error.
-- The Hermes installer could append a second `mcp_servers:` key to an existing config; the new installer merges into the existing block.
-
-### Fixed
-- Document filenames now derive from the active profile identity instead of the global naming config, and `reevaluate --profile` rejects a filename/content identity mismatch.
-- Market CV page budgets no longer apply to one-page cover letters; the preview gallery now renders every page of multi-page layouts.
-
-### Added
 - Hermes installation now supports explicit `--profile <name>` scoping with dry-run output; the default remains global and profile names are never stored in the plugin.
 - A pinned, license-reviewed upstream CV template catalog with an explicit adapter/gate contract; no third-party source or personal profile is bundled into the plugin.
 - Avatar-capable external template candidates identified for review: Brilliant CV (Apache-2.0), modern-typst-resume (Unlicense), Typst-CV-Resume (MIT), and modern-cv (license review required). They are reference candidates, not copied source.
@@ -41,10 +51,19 @@
 - Normalized job ingestion now records canonical URLs, stable content hashes, provenance, refresh dates, and available descriptions for deduplication.
 
 ### Changed
+- `.claude/skills` and `.claude/commands` moved into the plugin; Claude Code commands are now `/job-search:<name>`. Portal scrapers are no longer model-visible skills (`USAGE.md`), only `jobsearch scrape` sources.
+- Root `.mcp.json` removed (the plugin registers MCP); `opencode.json` runs the launcher. `.agents/install/hermes.sh` and `openclaw.sh` are thin wrappers around `jobsearch hosts-install` (one release).
+- The raster layout check loads `@napi-rs/canvas` lazily; a missing module fails the gate with a reason.
 - Pi can load the workflow as a local package, and the integration guide now documents setup and validation for all supported hosts.
 - CV page gates now use the selected market profile instead of a global two-page requirement.
 - Interview preparation consumes the same application plan and evidence priorities as the CV instead of relying on a generic talking-point list.
 - Outcome recording now resolves company, role, channel, template, and cover-letter state from the tracker row.
+
+### Fixed
+- A bundled build resolved templates to a non-existent directory and returned `templates.cv: null` silently; missing templates are now an `unavailable` error.
+- The Hermes installer could append a second `mcp_servers:` key to an existing config; the new installer merges into the existing block.
+- Document filenames now derive from the active profile identity instead of the global naming config, and `reevaluate --profile` rejects a filename/content identity mismatch.
+- Market CV page budgets no longer apply to one-page cover letters; the preview gallery now renders every page of multi-page layouts.
 
 ## 2026-07-18 — Evidence-grounded applications and document redesign
 

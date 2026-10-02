@@ -37,6 +37,14 @@ async function run(args: string[]) {
 }
 
 describe("application CLI", () => {
+  // Issue #4: banking takes free-form sections, so filling it from a draft broke
+  // at compile time. render now says which templates it can fill, before writing.
+  test("render refuses a CV template it cannot fill", async () => {
+    const result = await run(["render", "--draft", draftPath, "--job", postingPath, "--profile", profilePath, "--cv-template", "banking", "--layout", "modern"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("BAD_TEMPLATE");
+  });
+
   test("prepare emits exactly one composable JSON prompt bundle", async () => {
     const result = await run(["prepare", "--company", "Acme", "--role", "Platform Engineer", "--job", postingPath, "--profile", profilePath]);
     expect(result.exitCode).toBe(0);

@@ -55,16 +55,31 @@ export async function compile(
   const inputName = basename(inputPath, extname(inputPath));
   const pdfOutput = outputPath || join(inputDir, `${inputName}.pdf`);
 
+  const missing = (tool: string): CompileResult => ({
+    file: inputPath,
+    engine,
+    pages: null,
+    expected_pages: null,
+    status: "failed",
+    error: `${tool} not found on PATH`,
+    missingTool: tool,
+    duration_ms: Math.round(performance.now() - start),
+  });
+
   try {
     let cmd: string[];
     if (engine === "typst") {
       const typstCommand = resolveTypstCommand(CODE_ROOT);
+      const bunx = typstCommand ? null : resolveBin("bunx");
+      if (!typstCommand && !bunx) return missing("typst");
       cmd = typstCommand
         ? [...typstCommand, "compile", "--root", typstRoot(), inputPath, pdfOutput]
-        : ["bunx", "typst", "compile", "--root", typstRoot(), inputPath, pdfOutput];
+        : [bunx!, "typst", "compile", "--root", typstRoot(), inputPath, pdfOutput];
     } else if (engine === "lualatex") {
+      const lualatex = resolveBin("lualatex");
+      if (!lualatex) return missing("lualatex");
       cmd = [
-        resolveBin("lualatex") ?? "lualatex",
+        lualatex,
         "-interaction=nonstopmode",
         "-output-directory",
         inputDir,
@@ -73,8 +88,10 @@ export async function compile(
         inputPath,
       ];
     } else {
+      const xelatex = resolveBin("xelatex");
+      if (!xelatex) return missing("xelatex");
       cmd = [
-        resolveBin("xelatex") ?? "xelatex",
+        xelatex,
         "-interaction=nonstopmode",
         "-output-directory",
         inputDir,

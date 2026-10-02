@@ -44,6 +44,8 @@ export interface LayoutReport {
   pages: LayoutPageReport[];
   underfilledPages: string[];
   error?: string;
+  /** The rasterizer could not run at all: install the named tool, the document is not at fault. */
+  unavailable?: string;
 }
 
 async function run(command: string[], cwd = ROOT): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -52,8 +54,8 @@ async function run(command: string[], cwd = ROOT): Promise<{ code: number; stdou
   return { code: await proc.exited, stdout, stderr };
 }
 
-function failure(error: string): LayoutReport {
-  return { pass: false, renderer: null, pages: [], underfilledPages: [], error };
+function failure(error: string, unavailable?: string): LayoutReport {
+  return { pass: false, renderer: null, pages: [], underfilledPages: [], error, ...(unavailable ? { unavailable } : {}) };
 }
 
 function isInk(red: number, green: number, blue: number, alpha: number): boolean {
@@ -217,9 +219,9 @@ export async function checkLayout(pdfPath: string, sourcePath?: string): Promise
   }
 
   const typst = resolveTypstCommand(CODE_ROOT);
-  if (!typst) return failure("Typst is unavailable for layout rasterization");
+  if (!typst) return failure("Typst is unavailable for layout rasterization", "typst");
   const canvas = await loadCanvas();
-  if (!canvas) return failure("Raster layout check unavailable: @napi-rs/canvas is not installed (run from a checkout or install it next to the plugin)");
+  if (!canvas) return failure("Raster layout check unavailable: @napi-rs/canvas is not installed (run from a checkout or install it next to the plugin)", "@napi-rs/canvas");
 
   mkdirSync(SCRATCH_ROOT, { recursive: true });
   const outputDir = mkdtempSync(join(SCRATCH_ROOT, "layout-raster-"));

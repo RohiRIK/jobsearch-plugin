@@ -25,7 +25,10 @@ export interface ProjectDecision {
 
 export interface ApplicationPlan {
   roleThesis: string;
+  /** Top posting requirements the candidate's evidence supports. */
   mustProve: string[];
+  /** Top posting requirements the evidence does not support: disclose or bridge, never prove. */
+  openGaps: string[];
   evidencePriorities: EvidencePriority[];
   projectDecisions: ProjectDecision[];
   sectionOrder: Array<"summary" | "experience" | "projects" | "education" | "certifications">;
@@ -72,7 +75,13 @@ export function buildApplicationPlan(input: {
   const domains = detectJobDomains(`${input.role}\n${input.posting}`);
   const required = input.jd.requiredSkills.slice(0, 5);
   const nice = input.jd.niceToHaveSkills.slice(0, 3);
-  const mustProve = [...required, ...nice].map(titleCase);
+  // A requirement the scorer lists as a gap is not something the application
+  // can prove. Putting it in mustProve, and so in the thesis, told the writer to
+  // demonstrate Rails mastery with no Rails evidence (issue #12).
+  const gapSet = new Set(input.score.gaps.map((gap) => gap.toLowerCase()));
+  const isGap = (skill: string) => gapSet.has(skill.toLowerCase());
+  const mustProve = [...required, ...nice].filter((skill) => !isGap(skill)).map(titleCase);
+  const openGaps = [...required, ...nice].filter(isGap).map(titleCase);
   const rankedExperience = rankExperience(input.profile, input.jd);
   const projectRouting = `${input.role}\n${input.posting}`;
   const projects = input.profile.projects ?? [];
@@ -145,8 +154,12 @@ export function buildApplicationPlan(input: {
     });
   }
 
-  const topReason = mustProve[0] ?? domains[0] ?? input.role;
-  const roleThesis = `Lead with verified evidence that proves ${topReason} for this ${input.role}; keep supporting evidence below it.`;
+  const lead = mustProve[0]
+    ? `Lead with verified evidence that proves ${mustProve[0]} for this ${input.role}; keep supporting evidence below it.`
+    : `No top requirement of this ${input.role} is supported by the evidence; lead with the most relevant verified experience${domains[0] ? ` in ${domains[0]}` : ""} and do not imply the missing skills.`;
+  const roleThesis = openGaps.length
+    ? `${lead} Treat ${openGaps.slice(0, 3).join(", ")} as honest gaps or transferable experience, never as demonstrated skill.`
+    : lead;
   const sectionOrder: ApplicationPlan["sectionOrder"] = input.educationFirst
     ? ["summary", "education", "experience", "projects", "certifications"]
     : (input.profile.projects?.length && projectSelection.selected.length ? ["summary", "experience", "projects", "education", "certifications"] : ["summary", "experience", "education", "certifications"]);
@@ -154,6 +167,7 @@ export function buildApplicationPlan(input: {
   return {
     roleThesis,
     mustProve,
+    openGaps,
     evidencePriorities: priorities,
     projectDecisions,
     sectionOrder,

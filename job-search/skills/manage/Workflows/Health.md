@@ -9,7 +9,7 @@ Read-only. Changes nothing; reports what works and the next command for each gap
    - `bun run plugin:sync-skills --check` — synced skills untouched.
    - `bun run gates` — typecheck, tests, personal-data scan.
 
-Report one table: check · pass/fail · detail · fix. A missing `typst`, `pdftotext` or `canvas` means documents cannot pass the shipping gate — say so plainly; it is not a warning.
+Report one table: check · pass/fail · detail · fix. A missing `typst`, `pdftotext` or `canvas` means documents cannot pass the shipping gate — say so plainly; it is not a warning. Typst is fixed with `jobsearch tools-install --tool typst` (dry-run first, `--yes` after a user yes); Poppler and canvas need the system package manager or `bun install`.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|

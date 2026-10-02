@@ -437,7 +437,51 @@ export function conventionsBlock(profile: MarketProfile): string {
  * convention. An explicit statement therefore wins; otherwise the market
  * default applies.
  */
+/**
+ * The language a posting is written in, by its commonest function words; null
+ * when the text is too short or no language clearly leads. Hebrew is detected
+ * by script. Deliberately small: it only has to tell a Danish posting from an
+ * English one, not translate anything.
+ */
+export function detectTextLanguage(text: string): string | null {
+  if ((text.match(/[\u0590-\u05FF]/g) ?? []).length > 40) return "Hebrew";
+  const words = text.toLowerCase().match(/[a-zæøåäöüßéèàç]+/g) ?? [];
+  if (words.length < 30) return null;
+  // Each list holds words that mark one language against its neighbours; a word
+  // two close languages share (Danish/Norwegian/Swedish "det", "med") decides nothing.
+  const STOP: Record<string, string[]> = {
+    English: ["the", "and", "of", "to", "with", "you", "for", "our", "are", "will", "is", "in"],
+    // Danish and Norwegian share most function words; only words that differ count.
+    Danish: ["af", "vores", "efter", "meget", "dig", "mig", "hvad", "arbejde", "udvikling", "tilbyder", "ansøgning", "spændende", "virksomhed"],
+    German: ["und", "der", "die", "das", "mit", "für", "wir", "sie", "ist", "ein", "zu", "von"],
+    Dutch: ["het", "van", "een", "wij", "voor", "zijn", "niet", "ook", "bij", "naar", "werken", "ontwikkeling"],
+    Swedish: ["och", "att", "är", "för", "inte", "oss", "vår", "våra", "arbeta", "utveckling", "erbjuder", "ansökan"],
+    Norwegian: ["av", "våre", "etter", "mye", "deg", "meg", "hva", "arbeide", "utvikling", "tilbyr", "søknad", "spennende", "virksomhet"],
+    French: ["et", "le", "les", "des", "pour", "vous", "nous", "avec", "est", "une", "dans", "du"],
+    Spanish: ["y", "el", "los", "las", "para", "con", "que", "una", "es", "por", "del", "nuestro"],
+  };
+  const counts = Object.entries(STOP).map(([language, stop]) => {
+    const set = new Set(stop);
+    return { language, hits: words.filter((word) => set.has(word)).length };
+  }).sort((a, b) => b.hits - a.hits);
+  const [best, next] = counts;
+  return best.hits >= 5 && best.hits >= next.hits * 1.3 ? best.language : null;
+}
+
+/**
+ * The language an application to this posting is expected in: an explicit
+ * statement wins, then the language the posting is written in, then the
+ * market default.
+ */
+export function postingLanguage(profile: MarketProfile, posting: string): string {
+  return statedLanguage(posting) ?? detectTextLanguage(posting) ?? profile.languages[0] ?? "English";
+}
+
 export function preferredLanguage(profile: MarketProfile, posting: string): string {
+  return statedLanguage(posting) ?? profile.languages[0] ?? "English";
+}
+
+function statedLanguage(posting: string): string | null {
   const KNOWN = [
     "English", "German", "Danish", "Dutch", "French", "Spanish", "Italian",
     "Swedish", "Norwegian", "Hebrew", "Portuguese", "Polish",
@@ -459,5 +503,5 @@ export function preferredLanguage(profile: MarketProfile, posting: string): stri
     const match = KNOWN.find((l) => l.toLowerCase() === claimed.toLowerCase());
     if (match) return match;
   }
-  return profile.languages[0] ?? "English";
+  return null;
 }

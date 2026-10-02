@@ -72,10 +72,28 @@ function hermesRoot(scope: string | undefined): string {
 }
 
 /** Insert our MCP entry into Hermes config.yaml without creating a duplicate `mcp_servers:` key. */
+/**
+ * Our entry is recognised by its parsed value, never its spelling: `hermes config set`
+ * writes the command unquoted and args as a block list, which is the same registration.
+ * Appending still edits text, so the rest of the file keeps its comments and layout.
+ */
 export function hermesConfigWithMcp(current: string, command: string): string | "present" | "conflict" {
+  let doc: unknown;
+  try {
+    doc = current.trim() === "" ? {} : Bun.YAML.parse(current);
+  } catch {
+    throw new AgentError("validation", "cannot parse the Hermes config.yaml; fix it by hand first");
+  }
+  const servers = (doc as { mcp_servers?: unknown } | null)?.mcp_servers;
+  const existing = servers && typeof servers === "object" ? (servers as Record<string, unknown>)["job-search"] : undefined;
+  if (existing !== undefined) {
+    const { command: cmd, args } = (existing ?? {}) as { command?: unknown; args?: unknown };
+    return cmd === command && Array.isArray(args) && args.length === 1 && args[0] === "mcp" ? "present" : "conflict";
+  }
   const entry = `  job-search:\n    command: ${JSON.stringify(command)}\n    args: ["mcp"]\n`;
-  if (/^\s{2}job-search:\s*$/m.test(current)) return current.includes(JSON.stringify(command)) ? "present" : "conflict";
   if (/^mcp_servers:\s*$/m.test(current)) return current.replace(/^mcp_servers:\s*$/m, (m) => `${m}\n${entry.trimEnd()}`);
+  // An inline or null `mcp_servers:` cannot take a block entry; a second key would shadow the first.
+  if (/^mcp_servers:/m.test(current)) throw new AgentError("validation", "mcp_servers in the Hermes config.yaml is not a block mapping; add the job-search entry by hand");
   return `${current}${current.endsWith("\n") || current === "" ? "" : "\n"}mcp_servers:\n${entry}`;
 }
 
@@ -295,6 +313,54 @@ async function runList(): Promise<CommandResult> {
   return { data: { pluginDir: pluginDir(), launcher: launcher(), hosts: detect() } };
 }
 
+type McpStatus = { registered: "current" | "legacy" | "other" | "none"; command?: unknown; args?: unknown; legacyEntries?: string[]; hint?: string };
+
+/** The pre-2.0 server (`bun run mcp` / scripts/mcp/server.ts) exposes the old tool set. */
+const LEGACY_MCP = /scripts\/mcp\/server\.ts|"run"\s*,\s*"mcp"|\brun mcp\b/;
+
+/**
+ * What a host's MCP config actually registers. "the plugin is installed" and
+ * "the host loads the new server" are different facts: a live Hermes kept
+ * serving the legacy 19-tool registry while the new launcher worked from the
+ * CLI (issue #10). This names which server each entry points at.
+ */
+export function classifyMcp(servers: Record<string, unknown> | undefined, command: string, config: string): McpStatus {
+  const entries = Object.entries(servers ?? {});
+  const legacyEntries = entries.filter(([, entry]) => LEGACY_MCP.test(JSON.stringify(entry))).map(([name]) => name);
+  const ours = (servers ?? {})["job-search"] as { command?: unknown; args?: unknown } | undefined;
+  const flat = ours ? [ours.command, ...(Array.isArray(ours.args) ? ours.args : [])].flat() : [];
+  const registered: McpStatus["registered"] = !ours
+    ? "none"
+    : flat[0] === command && flat.slice(1).join(" ") === "mcp"
+      ? "current"
+      : LEGACY_MCP.test(JSON.stringify(ours))
+        ? "legacy"
+        : "other";
+  const hint = legacyEntries.length > 0
+    ? `remove the legacy entr${legacyEntries.length > 1 ? "ies" : "y"} ${legacyEntries.join(", ")} from ${config} by hand (hosts-install never overwrites what it did not write), then hosts-install, start a new host session, and confirm the host lists jobsearch_status`
+    : registered === "other"
+      ? `mcp job-search in ${config} points at another command; check it before replacing it`
+      : registered === "none"
+        ? "not registered: run hosts-install for this host"
+        : undefined;
+  return { registered, ...(ours ? { command: ours.command, args: ours.args } : {}), ...(legacyEntries.length ? { legacyEntries } : {}), ...(hint ? { hint } : {}) };
+}
+
+function hermesServers(config: string): Record<string, unknown> | undefined {
+  if (!existsSync(config)) return undefined;
+  try {
+    return (Bun.YAML.parse(readFileSync(config, "utf-8")) as { mcp_servers?: Record<string, unknown> } | null)?.mcp_servers ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** OpenCode stores the command as one array; split it into the command/args shape. */
+function opencodeServers(config: string): Record<string, unknown> {
+  const mcp = (readJson(config).mcp ?? {}) as Record<string, { command?: unknown[] }>;
+  return Object.fromEntries(Object.entries(mcp).map(([name, entry]) => [name, Array.isArray(entry?.command) ? { command: entry.command[0], args: entry.command.slice(1) } : entry]));
+}
+
 async function runDoctor(values: Values): Promise<CommandResult> {
   const h = home();
   const skills = pluginSkills();
@@ -313,13 +379,18 @@ async function runDoctor(values: Values): Promise<CommandResult> {
       pathShim: ours(shim),
       hosts: {
         claude: { present: present.claude, registered: claudeInstalled },
-        hermes: { present: present.hermes, skillsLinked: linked(join(hermes, "skills"), "job-search-"), mcp: existsSync(join(hermes, "config.yaml")) && readFileSync(join(hermes, "config.yaml"), "utf-8").includes(launcher()) },
-        opencode: { present: present.opencode, skillsLinked: linked(join(h, ".config", "opencode", "skills"), ""), mcp: JSON.stringify(readJson(join(h, ".config", "opencode", "opencode.json")).mcp?.["job-search"] ?? null).includes(launcher()) },
+        hermes: { present: present.hermes, skillsLinked: linked(join(hermes, "skills"), "job-search-"), ...mcpFields(classifyMcp(hermesServers(join(hermes, "config.yaml")), launcher(), join(hermes, "config.yaml"))) },
+        opencode: { present: present.opencode, skillsLinked: linked(join(h, ".config", "opencode", "skills"), ""), ...mcpFields(classifyMcp(opencodeServers(join(h, ".config", "opencode", "opencode.json")), launcher(), join(h, ".config", "opencode", "opencode.json"))) },
         openclaw: { present: present.openclaw, skillsLinked: linked(join(h, ".openclaw", "workspace", "skills"), "job-search-") },
         pi: { present: present.pi, registered: (readJson(join(h, ".pi", "agent", "settings.json")).packages ?? []).includes(pluginDir()) },
       },
     },
   };
+}
+
+/** `mcp` stays a boolean (true only for the current server); `mcpServer` explains it. */
+function mcpFields(status: McpStatus): { mcp: boolean; mcpServer: McpStatus } {
+  return { mcp: status.registered === "current", mcpServer: status };
 }
 
 const HOST_FLAG = { type: "string" as const, required: true, description: HOSTS.join("|"), enum: HOSTS };

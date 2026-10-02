@@ -152,6 +152,37 @@ describe("application drafting contract", () => {
     expect(brief.prompt).toContain("profile:project:<slug>");
   });
 
+  // Issue #6: describing the employer's requirement is not a candidate claim.
+  describe("attributed employer requirements", () => {
+    const letterWith = (text: string, declare = false) => {
+      const draft = validApplicationDraft();
+      draft.strategy.honestGaps = declare ? ["Kubernetes"] : [];
+      draft.coverLetter.paragraphs[0] = { text, evidenceIds: ["profile:skill:0:0"] };
+      return reviewApplicationDraft(draft, brief).findings.map((item) => item.code);
+    };
+
+    test("a sentence that only attributes the requirement to the posting passes", () => {
+      expect(letterWith("Your posting asks for Kubernetes at scale. My delivery work uses Python and Terraform.")).not.toContain("GAP_AS_CLAIM");
+      expect(letterWith("You are looking for someone who has run Kubernetes in production.")).not.toContain("GAP_AS_CLAIM");
+      expect(letterWith('The role lists "Kubernetes" as a must-have.')).not.toContain("GAP_AS_CLAIM");
+    });
+
+    test("attribution does not excuse a first-person claim in the same sentence", () => {
+      expect(letterWith("The role requires Kubernetes, and I have run it in production.")).toContain("GAP_AS_CLAIM");
+      expect(letterWith("Your team needs Kubernetes; my background covers it.")).toContain("GAP_AS_CLAIM");
+    });
+
+    test("an unattributed claim still fails", () => {
+      expect(letterWith("Kubernetes is where I do my best work.")).toContain("GAP_AS_CLAIM");
+    });
+
+    test("the CV gets no attribution latitude", () => {
+      const draft = validApplicationDraft();
+      draft.cv.summary = { text: `${draft.cv.summary.text} The posting asks for Kubernetes.`, evidenceIds: draft.cv.summary.evidenceIds };
+      expect(reviewApplicationDraft(draft, brief).findings.map((item) => item.code)).toContain("GAP_AS_CLAIM");
+    });
+  });
+
   test("an undeclared gap is rejected even in the cover letter", () => {
     const draft = validApplicationDraft();
     draft.strategy.honestGaps = [];

@@ -91,6 +91,8 @@ const CODE_MAP: Record<string, ErrorType> = {
   NO_QUERY: "usage",
   BAD_PORTAL: "validation",
   BAD_LAYOUT: "validation",
+  BAD_TEMPLATE: "validation",
+  LANGUAGE_CHOICE_REQUIRED: "validation",
   LAYOUT_CHOICE_REQUIRED: "validation",
   EMPTY_JOB: "validation",
   NO_INPUT: "usage",

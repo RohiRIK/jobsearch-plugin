@@ -6,6 +6,21 @@ import type { ApplicationDraft } from "./application-draft.js";
 import { CODE_ROOT } from "./paths.js";
 
 
+/** Professional links a CV header can carry, with their short visible labels. */
+export const PROFILE_LINKS = { linkedin: "LinkedIn", github: "GitHub", blog: "Website" } as const;
+export type ProfileLink = keyof typeof PROFILE_LINKS;
+
+/**
+ * Which profile links go on the CV. Every link the profile has is included by
+ * default; `requested` narrows it. The result is reported by render so an
+ * omitted link is a visible decision, not an accident (issue #8).
+ */
+export function selectedLinks(profile: Profile, requested?: ProfileLink[]): { included: ProfileLink[]; omitted: ProfileLink[] } {
+  const available = (Object.keys(PROFILE_LINKS) as ProfileLink[]).filter((key) => Boolean(profile.identity[key]));
+  const included = requested ? available.filter((key) => requested.includes(key)) : available;
+  return { included, omitted: available.filter((key) => !included.includes(key)) };
+}
+
 export function typstString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
 }
@@ -48,6 +63,8 @@ export function renderCvTypst(input: {
   layout?: string;
   /** Whether this template has a designed avatar/photo slot. */
   supportsAvatar?: boolean;
+  /** Profile links to print; default every link the profile has (see PROFILE_LINKS). */
+  links?: ProfileLink[];
 }): string {
   const { profile, draft, outDir } = input;
   const template = input.template ?? "modern";
@@ -56,12 +73,12 @@ export function renderCvTypst(input: {
   const templateImport = importPath(outDir, `${CODE_ROOT}/templates/cv/${template}/template.typ`);
   // Keep visible contact labels short while preserving each literal URL as the
   // clickable PDF destination. Raw URLs in the header are a common overflow source.
+  const links = selectedLinks(profile, input.links).included;
   const contact = [
     identity.email && quoted(identity.email),
     identity.phone && quoted(identity.phone),
     identity.location && quoted(identity.location),
-    identity.linkedin && `link(${quoted(identity.linkedin)})[LinkedIn]`,
-    identity.blog && `link(${quoted(identity.blog)})[Website]`,
+    ...links.map((key) => `link(${quoted(identity[key]!)})[${PROFILE_LINKS[key]}]`),
   ].filter((value): value is string => Boolean(value));
   const languages = identity.languages ?? [];
   const skillGroups = new Map<string, string[]>();
@@ -93,7 +110,10 @@ export function renderCvTypst(input: {
   const educationFirst = input.market ? getMarketProfile(input.market)?.ordering === "education-first" : false;
   const education = (profile.education ?? []).map((item) => {
     const year = [item.startYear, item.endYear].filter(Boolean).join(" - ");
-    return `(year: ${quoted(year)}, degree: ${quoted(item.degree)}, institution: ${quoted(item.institution)}, field: ${quoted(item.field)})`;
+    // A field that only repeats the degree title printed as a bullet saying the
+    // same thing twice (pilot review), so it is left out.
+    const field = item.field && item.field.trim().toLowerCase() !== item.degree.trim().toLowerCase() ? item.field : "";
+    return `(year: ${quoted(year)}, degree: ${quoted(item.degree)}, institution: ${quoted(item.institution)}, field: ${quoted(field)})`;
   });
   const certifications = (profile.certifications ?? []).map(
     (item) => `(name: ${quoted(item.name)}, date: ${quoted(item.date ?? "")})`,
@@ -121,6 +141,7 @@ export function renderCvTypst(input: {
   education: ${tuple(education)},
   certifications: ${tuple(certifications)},
   education-first: ${educationFirst},
+  section-order: ${tuple(draft.strategy.sectionOrder.map(quoted))},
   is-rtl: false,
   layout: ${quoted(input.layout ?? "modern")},
 )

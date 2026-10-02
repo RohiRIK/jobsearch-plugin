@@ -3,9 +3,10 @@ import { parseArgs } from "node:util";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ApplicationDraft, buildApplicationBrief, reviewApplicationDraft } from "../../src/application-draft.js";
-import { renderCoverLetterTypst, renderCvTypst } from "../../src/application-renderers.js";
+import { PROFILE_LINKS, renderCoverLetterTypst, renderCvTypst, selectedLinks, type ProfileLink } from "../../src/application-renderers.js";
+import { detectMarket, getMarketProfile, postingLanguage } from "../../src/market-profiles.js";
 import { Profile } from "../../src/profile-schemas.js";
-import { CV_LAYOUTS } from "../../src/cv-options.js";
+import { CV_LAYOUTS, RENDERABLE_CV_TEMPLATES } from "../../src/cv-options.js";
 import { buildSourcePath, loadConfig, profileDocumentName } from "../../src/naming.js";
 import { readStdin } from "../../src/stdin.js";
 import { z } from "zod";
@@ -31,9 +32,10 @@ OPTIONS
   --job <file|->         Raw posting; '-' reads stdin
   --draft <file|->       ApplicationDraft JSON; '-' reads stdin
   --profile <file>       Profile JSON (default: data/profile.json)
-  --language <name>      Cover-letter language (default: the market's own)
+  --language <name>      Document language (default: the posting's own); on render, confirms a language that differs from it
   --market <code>        Force a market (de, dk, ch, ie...); detected from the posting otherwise
   --cv-template <name>   Typst CV template (default: modern)
+  --links <list>         Profile links on the CV: linkedin,github,blog (default: all the profile has)
   --layout <name>            Chosen CV layout variant (required for render)
   --cl-template <name>   Typst cover template (default: modern)
   --date <YYYY-MM-DD>    Grouped output date (default: today)
@@ -62,6 +64,7 @@ interface CliOptions {
   clTemplate: string;
   layout?: string;
   date?: string;
+  links?: string;
   compile: boolean;
   force: boolean;
 }
@@ -78,6 +81,7 @@ interface ParsedValues {
   "cl-template": string;
   layout?: string;
   date?: string;
+  links?: string;
   compile: boolean;
   force: boolean;
   help: boolean;
@@ -123,6 +127,7 @@ async function prepare(options: CliOptions, profile: Profile): Promise<number> {
 async function loadDraftAndBrief(options: CliOptions, profile: Profile): Promise<{
   draft: ApplicationDraft;
   brief: ReturnType<typeof buildApplicationBrief>;
+  posting: string;
 }> {
   if (!options.draft || !options.job) throw new Error("review/render require --draft and --job");
   if (options.draft === "-" && options.job === "-") throw new Error("--draft and --job cannot both read stdin");
@@ -136,7 +141,7 @@ async function loadDraftAndBrief(options: CliOptions, profile: Profile): Promise
     language: options.language ?? draft.language,
     market: options.market,
   });
-  return { draft, brief };
+  return { draft, brief, posting };
 }
 
 async function review(options: CliOptions, profile: Profile): Promise<number> {
@@ -147,7 +152,7 @@ async function review(options: CliOptions, profile: Profile): Promise<number> {
 }
 
 async function render(options: CliOptions, profile: Profile): Promise<number> {
-  const { draft, brief } = await loadDraftAndBrief(options, profile);
+  const { draft, brief, posting } = await loadDraftAndBrief(options, profile);
   const reviewResult = reviewApplicationDraft(draft, brief);
   if (!reviewResult.pass) {
     process.stdout.write(JSON.stringify({ written: false, review: reviewResult }, null, 2) + "\n");
@@ -156,7 +161,35 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   const blockingMissingFacts = brief.missingFacts.filter((fact) => ["candidate name", "email", "experience"].includes(fact));
   if (blockingMissingFacts.length > 0) return error("profile is incomplete for document rendering", "MISSING_PROFILE_FACTS", blockingMissingFacts);
 
+  // Writing in another language than the posting's is a decision, not a default
+  // (issue #8): an English letter to a Danish-language municipal posting needs
+  // someone to have chosen it, knowing which languages the profile lists.
+  const marketProfile = getMarketProfile(brief.market) ?? detectMarket(posting);
+  const expectedLanguage = postingLanguage(marketProfile, posting);
+  const candidateLanguages = profile.identity.languages ?? [];
+  const sameLanguage = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (!sameLanguage(draft.language, expectedLanguage) && !(options.language && sameLanguage(options.language, draft.language))) {
+    return error(`the draft is in ${draft.language} but the posting expects ${expectedLanguage}; confirm with --language ${draft.language} or redraft`, "LANGUAGE_CHOICE_REQUIRED", {
+      draftLanguage: draft.language,
+      postingLanguage: expectedLanguage,
+      candidateLanguages,
+    });
+  }
+  const languageNote = {
+    document: draft.language,
+    posting: expectedLanguage,
+    candidateLists: candidateLanguages.some((language) => sameLanguage(language, draft.language)),
+  };
+
+  const requestedLinks = options.links === undefined ? undefined : options.links.split(",").map((key) => key.trim()).filter(Boolean);
+  const unknownLink = requestedLinks?.find((key) => !(key in PROFILE_LINKS));
+  if (unknownLink) return error(`unknown link '${unknownLink}'`, "BAD_ARGS", { available: Object.keys(PROFILE_LINKS) });
+  const links = selectedLinks(profile, requestedLinks as ProfileLink[] | undefined);
+
   assertTemplate("cv", options.cvTemplate);
+  if (!(RENDERABLE_CV_TEMPLATES as readonly string[]).includes(options.cvTemplate)) {
+    return error(`CV template '${options.cvTemplate}' cannot be filled by application render; it takes a different input shape`, "BAD_TEMPLATE", { renderable: RENDERABLE_CV_TEMPLATES, layouts: CV_LAYOUTS.map((option) => option.id) });
+  }
   assertTemplate("cover", options.clTemplate);
   const namingConfig = { ...loadConfig(), name: profileDocumentName(profile.identity) };
   const cvRelative = buildSourcePath("cv", draft.company, draft.role, namingConfig, options.date);
@@ -187,7 +220,7 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   const photo = options.cvTemplate === "modern" && layoutOption.supportsAvatar && existsSync(photoPath) ? photoPath : undefined;
   writeFileSync(
     cvPath,
-    renderCvTypst({ profile, draft, outDir: dirname(cvPath), template: options.cvTemplate, market: brief.market, photo, layout, supportsAvatar: layoutOption.supportsAvatar }),
+    renderCvTypst({ profile, draft, outDir: dirname(cvPath), template: options.cvTemplate, market: brief.market, photo, layout, supportsAvatar: layoutOption.supportsAvatar, links: links.included }),
   );
   writeFileSync(
     clPath,
@@ -209,7 +242,7 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
 
   process.stdout.write(
     JSON.stringify(
-      { written: true, files: { cv: cvRelative, coverLetter: clRelative }, compiled, review: reviewResult, next: `bun run reevaluate --company ${JSON.stringify(draft.company)} --role ${JSON.stringify(draft.role)} --market ${brief.market}` },
+      { written: true, files: { cv: cvRelative, coverLetter: clRelative }, links, language: languageNote, compiled, review: reviewResult, next: `bun run reevaluate --company ${JSON.stringify(draft.company)} --role ${JSON.stringify(draft.role)} --market ${brief.market}` },
       null,
       2,
     ) + "\n",
@@ -234,6 +267,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
         "cl-template": { type: "string", default: "modern" },
         layout: { type: "string" },
         date: { type: "string" },
+        links: { type: "string" },
         compile: { type: "boolean", default: false },
         force: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
@@ -276,6 +310,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
     clTemplate: values["cl-template"],
     layout: values.layout,
     date: values.date,
+    links: values.links,
     compile: values.compile,
     force: values.force,
   };

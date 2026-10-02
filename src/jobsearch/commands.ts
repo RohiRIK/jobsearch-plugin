@@ -88,6 +88,7 @@ async function runStatus(values: Values): Promise<CommandResult> {
   else if (!profile.valid) next.push("fix the profile validation issue before scoring anything");
   if (tracker.followupsDue > 0) next.push(`${tracker.followupsDue} follow-up(s) due: jobsearch followups`);
   if (postings.length > 0) next.push(`rank saved postings: jobsearch rank --dir ${JSON.stringify(join(WORKSPACE, "data", "jd"))}`);
+  if (!tools.typst) next.push("jobsearch tools-install --tool typst --dry-run (installs a pinned Typst into the workspace, no global install)");
   if (!tools.typst || !tools.pdftotext || !tools.canvas) next.push("documents cannot pass the shipping gate until typst, pdftotext and canvas are all available");
   return {
     data: {
@@ -208,7 +209,7 @@ async function runRender(values: Values): Promise<CommandResult> {
     if (run.json === undefined) throw toolFailure("application", run);
     return { data: { dryRun: true, review: run.json, wouldWrite: "convention-named Typst CV + cover letter under <workspace>/assets/applications/" }, exit: EXIT.dryRun };
   }
-  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "compile", "force"])]);
+  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "compile", "force"])]);
   if (run.json !== undefined) {
     const out = run.json as { written?: boolean };
     return { data: out, exit: run.code === 0 ? EXIT.ok : EXIT.verdictFailed };
@@ -422,13 +423,14 @@ export const CORE_COMMANDS: Record<string, CommandSpec> = {
       "cv-template": { type: "string", description: "Typst CV template", default: "modern" },
       "cl-template": { type: "string", description: "Typst cover template", default: "modern" },
       date: { type: "string", description: "Output date YYYY-MM-DD (default today)" },
+      links: { type: "string", description: "Profile links on the CV, comma-separated: linkedin,github,blog (default: all the profile has)" },
       compile: { type: "boolean", description: "Compile both sources after writing" },
       force: { type: "boolean", description: "Overwrite existing convention-named sources" },
       profile: PROFILE_FLAG,
       company: { type: "string", description: "Override draft company" },
       role: { type: "string", description: "Override draft role" },
       market: { type: "string", description: "Force a market code" },
-      language: { type: "string", description: "Cover-letter language" },
+      language: { type: "string", description: "Document language; required to confirm one that differs from the posting's" },
       ...MUTATION_FLAGS,
     },
     run: runRender,

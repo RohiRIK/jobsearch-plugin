@@ -19,6 +19,8 @@ Steps:
 
 Exit 5 means an unrelated skill or MCP entry already uses one of our names. Report it and stop; never delete or overwrite something the installer did not create.
 
+`mcpServer.registered` says which server the host will start: `current` (this plugin), `legacy` (the pre-2.0 `scripts/mcp/server.ts`, the old tool set), `other`, or `none`. `legacyEntries` lists old servers under any name. Show the user the hint and the entry; they remove it, then install, then open a new host session and confirm it lists `jobsearch_status`. A working CLI does not prove the host loaded the new server.
+
 Claude Code installs through its own plugin manager instead (the installer prints these when `--host claude`):
 
 ```bash

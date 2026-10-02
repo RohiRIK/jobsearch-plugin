@@ -87,6 +87,8 @@ export const CompileResult = z.object({
   status: CompileStatus,
   ats_check: z.enum(["pass", "fail", "skipped", "unavailable"]).optional(),
   error: z.string().optional(),
+  /** Set when the compiler itself is absent: a toolchain problem, not a source error. */
+  missingTool: z.string().optional(),
   duration_ms: z.number().optional(),
 });
 

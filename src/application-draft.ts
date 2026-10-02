@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Profile } from "./profile-schemas.js";
 import { summarizeText } from "../scripts/jobs/summarize.js";
 import { scoreJob } from "../scripts/match/score-job.js";
-import { conventionsBlock, detectMarket, getMarketProfile, preferredLanguage } from "./market-profiles.js";
+import { conventionsBlock, detectMarket, getMarketProfile, postingLanguage } from "./market-profiles.js";
 import { selectProjects } from "./project-matching.js";
 import { buildApplicationPlan, type ApplicationPlan } from "./application-plan.js";
 import { recommendCvLayout, type LayoutRecommendation } from "./cv-options.js";
@@ -282,7 +282,7 @@ export function buildApplicationBrief(input: {
   // rejects a photo that Switzerland expects — so the detected profile drives
   // the default language and rides into the prompt as explicit constraints.
   const marketProfile = input.market ? (getMarketProfile(input.market) ?? detectMarket(posting)) : detectMarket(posting);
-  const language = input.language ?? preferredLanguage(marketProfile, posting);
+  const language = input.language ?? postingLanguage(marketProfile, posting);
   const evidence = buildEvidenceLedger(profile, posting, company, role);
   const result = scoreJob(summarizeText(posting, { company, title: role }), profile);
   const plan = buildApplicationPlan({
@@ -320,7 +320,7 @@ Draft both documents as one JSON object matching the response contract. Treat th
 <steps>
 1. Treat the supplied application plan as the document's strategy. Select the strongest profile evidence named by its evidencePriorities rather than repeating the whole profile; keep its work/personal classifications and section order.
 2. Write a 40-65 word CV summary and 3-6 evidence-backed bullets per relevant role. Lead bullets with actions. Numbers must stay truthful to their evidence, but phrase them naturally: state a scale figure once (or twice at most, framed differently), then refer back with varied wording such as 'at that scale', 'the same tenant', or 'enterprise-wide' instead of repeating the same figure in every line.
-3. Write a 220-300 word cover letter in ${language}, using 3-5 paragraphs. Open with the strongest concrete match, not an application announcement. Make the motivation specific to the supplied posting without inventing company facts.
+3. Write a 220-300 word cover letter in ${language}, using 3-5 paragraphs. Open with the strongest concrete match, not an application announcement. Make the motivation specific to the supplied posting without inventing company facts. Set recipient to a named person only when the posting names one; otherwise use "Hiring Team". Never put the company or role in the recipient.
 4. Include only portfolio projects present in the evidence bundle as profile:project:<slug>. They were already filtered for relevance to this posting; leave the section empty rather than adding one that does not strengthen the application.
 5. Use the recommended layout from the application context when the user wants an agent-selected template; the ranking is advisory and the human may override it with a reason.
 6. Remove filler, cliches, unsupported adjectives, subjective skill levels, em dashes, and duplicated CV prose.
@@ -379,6 +379,22 @@ function allClaims(draft: ApplicationDraft): Array<{ path: string; claim: Eviden
 
 function numberTokens(text: string): string[] {
   return [...text.matchAll(/(?<![A-Za-z])\d+(?:[.,]\d+)?%?\+?/g)].map((match) => match[0].replace(/,$/, ""));
+}
+
+function splitSentences(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+(?=["'“A-Z0-9])/).map((sentence) => sentence.trim()).filter(Boolean);
+}
+
+const EMPLOYER_CUE = [
+  /\b(?:your|the|this)\s+(?:job\s+)?(?:posting|ad|advert(?:isement)?|listing|description|role|position|vacancy|team)\s+(?:also\s+)?(?:asks?|ask(?:s|ing)?\s+for|requires?|calls?\s+for|mentions?|lists?|names?|emphasi[sz]es?|highlights?|stresses|seeks?|wants?|needs?|expects?)\b/i,
+  /\byou(?:'re|\s+are)?\s+(?:looking|asking|hiring|searching)\s+for\b/i,
+  /\b(?:is|are)\s+(?:listed|named|stated)\s+as\s+(?:a\s+)?(?:requirement|must-have|nice-to-have)\b/i,
+];
+const FIRST_PERSON = /\b(?:I|I'm|I've|I'd|I'll|[Mm]e|[Mm]y|[Mm]ine|[Mm]yself)\b/;
+
+/** True for a sentence that attributes something to the employer and says nothing about the candidate. */
+export function describesEmployerOnly(sentence: string): boolean {
+  return EMPLOYER_CUE.some((cue) => cue.test(sentence)) && !FIRST_PERSON.test(sentence);
 }
 
 function containsTerm(text: string, term: string): boolean {
@@ -474,14 +490,27 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
   // The CV gets no such latitude. A skills list or a bullet naming the gap reads
   // as a capability no matter what strategy.honestGaps says, so a declared gap
   // appearing in cvText is still an error.
+  //
+  // Nor does a letter sentence that only describes the employer: "Your posting
+  // asks for automation and scripting." names the gap without claiming it (#6).
+  // Such sentences are dropped from the letter scan; one that also speaks in the
+  // first person ("…and I have deep scripting experience") is still scanned.
   const declaredGaps = draft.strategy.honestGaps;
+  const candidateLetterText = splitSentences(letterText).filter((sentence) => !describesEmployerOnly(sentence)).join(" ");
   for (const gap of brief.gaps) {
     const skill = gap.replace(/^.*?:\s*/, "").replace(/\s+vs\s+.*$/, "").trim();
     if (!skill || containsTerm(profileEvidenceText, skill)) continue;
     const declared = declaredGaps.some((entry) => containsTerm(entry, skill));
-    if (containsTerm(declared ? cvText : text, skill)) {
+    if (containsTerm(cvText, skill) || (!declared && containsTerm(candidateLetterText, skill))) {
       findings.push({ severity: "error", code: "GAP_AS_CLAIM", message: `Draft claims an unsupported gap: ${skill}` });
     }
+  }
+
+  // "Dear Templafy — Corporate Security Engineer," is a subject line, not a
+  // salutation (issue #8): the recipient is a person or the hiring team.
+  const recipient = draft.coverLetter.recipient.trim();
+  if ([draft.company, draft.role].some((value) => value.trim().length > 1 && containsTerm(recipient, value)) || /[—–]|\s-\s/.test(recipient)) {
+    findings.push({ severity: "error", code: "UNNATURAL_SALUTATION", message: `Recipient "${recipient}" names the company or role; use a verified person's name or "Hiring Team".`, path: "coverLetter.recipient" });
   }
 
   const lower = text.toLowerCase();

@@ -55,6 +55,15 @@ export function cacheRoot(env: NodeJS.ProcessEnv = process.env, workspace: strin
   return join(workspace, "data", "cache");
 }
 
+/**
+ * Executables installed by `jobsearch tools-install`. They live with the
+ * workspace, not the plugin, so an upgrade or uninstall keeps them, and
+ * resolveBin searches here before giving up.
+ */
+export function toolsBinDir(env: NodeJS.ProcessEnv = process.env, workspace: string = workspaceRoot(env)): string {
+  return join(workspace, "data", "tools", "bin");
+}
+
 export const CODE_ROOT = codeRoot();
 export const WORKSPACE = workspaceRoot();
 export const TEMPLATES_DIR = join(CODE_ROOT, "templates");

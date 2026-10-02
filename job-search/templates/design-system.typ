@@ -46,11 +46,29 @@
   organization: "",
   location: "",
   content: (),
+  // Content placed in the same unbreakable block as the title row, normally the
+  // section heading for a section's first entry. `sticky` on section-title only
+  // works on Typst 0.12+; this keeps the heading with its entry on any version.
+  lead: none,
+  marker: "•",
 ) = {
-  // Keep the identifying row together, but let a long bullet list cross a
-  // page boundary. Keeping the whole role unbreakable can create large gaps
-  // or overflow for senior candidates.
-  block(breakable: false, {
+  let bullet-row(item) = {
+    [#metadata(item) <cv-entry-item>]
+    grid(
+      columns: (8pt, 1fr),
+      gutter: 2pt,
+      text(size: size-body)[#marker],
+      text(size: size-body)[#item],
+    )
+    v(1pt)
+  }
+  // The title row travels with its first bullet, so a role is never announced
+  // at the foot of a page with all of its evidence overleaf. Later bullets may
+  // still cross a page boundary: a fully unbreakable role leaves large gaps.
+  // A block's spacing collapses into its parent's, so the heading's own `above`
+  // is lost once it sits inside this block; restate it here.
+  block(breakable: false, above: if lead != none { gap-section } else { 1.2em }, {
+    if lead != none { lead }
     grid(
       columns: (1fr, auto),
       gutter: 8pt,
@@ -69,22 +87,13 @@
         #text(size: size-meta, fill: meta)[#date]
       ],
     )
+    if content.len() > 0 {
+      v(3pt)
+      bullet-row(content.at(0))
+    }
   })
-  if content.len() > 0 {
-    pad(top: 3pt)[
-      #for item in content {
-        block(breakable: false)[
-          #metadata(item) <cv-entry-item>
-          #grid(
-            columns: (8pt, 1fr),
-            gutter: 2pt,
-            text(size: size-body)[•],
-            text(size: size-body)[#item],
-          )
-        ]
-        v(1pt)
-      }
-    ]
+  for item in content.slice(calc.min(1, content.len())) {
+    block(breakable: false, bullet-row(item))
   }
   v(gap-entry)
 }

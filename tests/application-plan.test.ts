@@ -25,6 +25,28 @@ import { applicationPosting, applicationProfile, validApplicationDraft } from ".
     expect(brief.plan.contentBudget).toMatchObject({ summaryWords: [40, 65], projects: 1 });
   });
 
+  // Issue #12: a brief listed Rails as a gap and also told the writer to lead
+  // with evidence proving Rails.
+  test("never asks the writer to prove a requirement the evidence does not support", () => {
+    const posting = "Senior Rails Engineer. Requirements: Ruby on Rails, Python, Terraform. Build delivery automation.";
+    const brief = buildApplicationBrief({ profile: applicationProfile, posting, company: "Acme", role: "Senior Rails Engineer" });
+    const gaps = brief.gaps.map((gap) => gap.toLowerCase());
+    expect(gaps.some((gap) => gap.includes("rails"))).toBe(true);
+    for (const skill of brief.plan.mustProve) expect(gaps).not.toContain(skill.toLowerCase());
+    expect(brief.plan.roleThesis).not.toMatch(/proves (ruby on )?rails/i);
+    expect(brief.plan.roleThesis).toMatch(/proves (Python|Terraform)/);
+    expect(brief.plan.openGaps.join(" ")).toMatch(/rails/i);
+    expect(brief.plan.roleThesis).toMatch(/honest gaps or transferable experience/);
+  });
+
+  test("with no supported top requirement the thesis leads with relevant experience, not a gap", () => {
+    const posting = "Pastry Chef. Requirements: French pastry, lamination, sourdough.";
+    const brief = buildApplicationBrief({ profile: applicationProfile, posting, company: "Boulangerie", role: "Pastry Chef" });
+    expect(brief.plan.mustProve).toEqual([]);
+    expect(brief.plan.roleThesis).not.toMatch(/proves/);
+    expect(brief.plan.roleThesis).toMatch(/do not imply the missing skills/);
+  });
+
   test("keeps unreviewed and restricted projects out of application evidence", () => {
     const profile = structuredClone(applicationProfile);
     profile.projects![0].disclosure = "unreviewed";

@@ -9,17 +9,29 @@ export interface CvLayoutOption {
   supportsAvatar: boolean;
 }
 
+/**
+ * CV templates the application renderer can fill (`application render`). Other
+ * templates under templates/cv take a different input shape (banking takes free
+ * sections) and are used directly, not through the evidence-grounded renderer.
+ */
+export const RENDERABLE_CV_TEMPLATES = ["modern"] as const;
+
+/**
+ * Layouts of the modern template. Each id has its own row in the template's
+ * `styles` table and renders visibly differently; tests/cv-layouts.test.ts
+ * fails if two ids produce the same page, so a new id cannot silently alias.
+ */
 export const CV_LAYOUTS: CvLayoutOption[] = [
-  { id: "modern", name: "Modern", description: "Balanced single-column ATS layout with grouped skills.", bestFor: ["technology", "product", "data", "engineering"], avoidFor: [], density: "balanced", accent: "blue", supportsAvatar: true },
-  { id: "ats-compact", name: "ATS Compact", description: "Tighter margins and leading for dense, technical CVs.", bestFor: ["engineering", "technical", "security", "infrastructure"], avoidFor: ["design", "creative"], density: "compact", accent: "blue", supportsAvatar: true },
-  { id: "executive", name: "Executive", description: "Larger name treatment and restrained senior layout.", bestFor: ["executive", "leadership", "consulting", "management"], avoidFor: ["entry-level"], density: "roomy", accent: "navy", supportsAvatar: true },
-  { id: "technical", name: "Technical", description: "Dense evidence-first layout for technical hiring managers.", bestFor: ["engineering", "security", "platform", "devops"], avoidFor: ["creative", "marketing"], density: "compact", accent: "teal", supportsAvatar: true },
-  { id: "minimal", name: "Minimal", description: "Quiet single-column layout with no decorative emphasis.", bestFor: ["research", "legal", "government", "academic"], avoidFor: ["creative", "sales"], density: "balanced", accent: "slate", supportsAvatar: false },
-  { id: "swiss-grid", name: "Swiss Grid", description: "Structured grid discipline with strong alignment and rules.", bestFor: ["consulting", "finance", "enterprise", "operations"], avoidFor: ["casual"], density: "balanced", accent: "blue", supportsAvatar: false },
-  { id: "classic", name: "Classic", description: "Traditional conservative structure for formal applications.", bestFor: ["finance", "legal", "government", "academic"], avoidFor: ["startup", "creative"], density: "roomy", accent: "navy", supportsAvatar: false },
-  { id: "project-first", name: "Project First", description: "Places project evidence immediately after the profile summary.", bestFor: ["portfolio", "product", "research", "consulting"], avoidFor: ["traditional finance"], density: "balanced", accent: "indigo", supportsAvatar: true },
-  { id: "creative", name: "Creative", description: "More expressive accent and spacing while staying ATS-readable.", bestFor: ["design", "marketing", "media", "content"], avoidFor: ["legal", "finance"], density: "roomy", accent: "purple", supportsAvatar: true },
-  { id: "resume-compact", name: "Resume Compact", description: "Maximum information density for experienced technical candidates.", bestFor: ["engineering", "security", "operations"], avoidFor: ["design", "academic"], density: "compact", accent: "teal", supportsAvatar: false },
+  { id: "modern", name: "Modern", description: "Balanced single-column ATS layout with grouped skills and a shaded profile.", bestFor: ["technology", "product", "data", "engineering"], avoidFor: [], density: "balanced", accent: "blue", supportsAvatar: true },
+  { id: "ats-compact", name: "ATS Compact", description: "Modern styling with tighter margins and leading.", bestFor: ["engineering", "technical", "security", "infrastructure"], avoidFor: ["design", "creative"], density: "compact", accent: "blue", supportsAvatar: true },
+  { id: "executive", name: "Executive", description: "Larger name, navy accent and en-dash bullets for a restrained senior look.", bestFor: ["executive", "leadership", "consulting", "management"], avoidFor: ["entry-level"], density: "roomy", accent: "navy", supportsAvatar: true },
+  { id: "technical", name: "Technical", description: "Compact spacing with a teal accent for dense technical evidence.", bestFor: ["engineering", "security", "platform", "devops"], avoidFor: ["creative", "marketing"], density: "compact", accent: "teal", supportsAvatar: true },
+  { id: "minimal", name: "Minimal", description: "No rules or shading: plain slate headings and en-dash bullets.", bestFor: ["research", "legal", "government", "academic"], avoidFor: ["creative", "sales"], density: "balanced", accent: "slate", supportsAvatar: false },
+  { id: "swiss-grid", name: "Swiss Grid", description: "Black uppercase headings under heavy rules, Swiss typographic style.", bestFor: ["consulting", "finance", "enterprise", "operations"], avoidFor: ["casual"], density: "balanced", accent: "blue", supportsAvatar: false },
+  { id: "classic", name: "Classic", description: "Navy uppercase headings over thin rules, no shading; conservative.", bestFor: ["finance", "legal", "government", "academic"], avoidFor: ["startup", "creative"], density: "roomy", accent: "navy", supportsAvatar: false },
+  { id: "project-first", name: "Project First", description: "Modern styling with portfolio projects directly under the summary.", bestFor: ["portfolio", "product", "research", "consulting"], avoidFor: ["traditional finance"], density: "balanced", accent: "indigo", supportsAvatar: true },
+  { id: "creative", name: "Creative", description: "Purple accent and roomier line spacing while staying ATS-readable.", bestFor: ["design", "marketing", "media", "content"], avoidFor: ["legal", "finance"], density: "roomy", accent: "purple", supportsAvatar: true },
+  { id: "resume-compact", name: "Resume Compact", description: "Tightest margins, 9 pt body and a smaller name for maximum density.", bestFor: ["engineering", "security", "operations"], avoidFor: ["design", "academic"], density: "compact", accent: "teal", supportsAvatar: false },
 ];
 
 export interface LayoutRecommendation {
