@@ -1,0 +1,56 @@
+name: Release
+
+# Publishes a GitHub Release (and its tag) for the version in
+# job-search/plugin.json, once CI has passed on main. A version that is already
+# released is skipped, so this runs safely after every push.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Read version
+        id: v
+        run: |
+          version=$(jq -r .version job-search/plugin.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=job-search--v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if already released
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "${{ steps.v.outputs.tag }} already released"
+          fi
+
+      - name: Release notes from CHANGELOG
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          awk -v v="${{ steps.v.outputs.version }}" 'index($0, "## " v " ") == 1 {f = 1; next} f && /^## / {exit} f' CHANGELOG.md > notes.md
+          test -s notes.md || echo "See CHANGELOG.md" > notes.md
+          cat notes.md
+
+      - name: Create release
+        if: steps.exists.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" \
+            --target "${{ github.event.workflow_run.head_sha }}" \
+            --title "jobsearch ${{ steps.v.outputs.version }}" \
+            --notes-file notes.md
