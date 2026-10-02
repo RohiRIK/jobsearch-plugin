@@ -41,7 +41,7 @@ describe("tools-install", () => {
     mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, "typst"), "#!/bin/sh\necho typst 0.13.1\n", { mode: 0o755 });
     const proc = Bun.spawnSync([process.execPath, "-e", `import { resolveBin } from "${join(ROOT, "src/resolve-bin.ts")}"; console.log(resolveBin("typst"))`], {
-      env: { ...process.env, JOB_SEARCH_HOME: ws, PATH: "/nonexistent" },
+      env: { ...process.env, JOB_SEARCH_HOME: ws, PATH: "/nonexistent", JOB_SEARCH_BIN_PATH: "" },
     });
     expect(proc.stdout.toString().trim()).toBe(join(bin, "typst"));
   });

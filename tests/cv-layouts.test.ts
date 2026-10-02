@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { join, relative, resolve } from "node:path";
 import { renderCvTypst } from "../src/application-renderers.js";
 import { CV_LAYOUTS } from "../src/cv-options.js";
-import { resolveTypstCommand } from "../src/resolve-bin.js";
+import { resolveBin, resolveTypstCommand } from "../src/resolve-bin.js";
 import { applicationProfile, validApplicationDraft } from "./fixtures/application.js";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -30,13 +30,21 @@ async function typst(args: string[]): Promise<string> {
 async function pages(source: string): Promise<string[]> {
   const pdf = source.replace(/\.typ$/, ".pdf");
   await typst(["compile", "--root", ROOT, source, pdf]);
-  const text = Bun.spawnSync(["pdftotext", "-layout", pdf, "-"]).stdout.toString();
+  const text = Bun.spawnSync([resolveBin("pdftotext")!, "-layout", pdf, "-"]).stdout.toString();
   return text.split("\f").filter((page) => page.trim() !== "");
 }
 
 const HEADINGS = ["Profile", "Skills", "Experience", "Projects", "Education", "Certifications"];
-const headingOrder = (text: string) =>
-  text.split("\n").map((line) => line.trim()).filter((line) => HEADINGS.some((h) => h.toLowerCase() === line.toLowerCase()));
+
+/** Section headings in document order, read from their <cv-section> labels — no Poppler needed. */
+async function sectionOrder(source: string): Promise<string[]> {
+  return JSON.parse(await typst(["query", "--root", ROOT, source, "<cv-section>", "--field", "value"]));
+}
+
+// Page boundaries need text extraction; Typst 0.10 and 0.13 share no API for a
+// heading's page. pdftotext is a documented shipping dependency, present
+// wherever the gate runs, but not on the bare CI runner.
+const HAS_PDFTOTEXT = Boolean(resolveBin("pdftotext"));
 
 function draftWithProject() {
   const draft = validApplicationDraft();
@@ -81,21 +89,21 @@ describe("section order", () => {
     expect(a).not.toBe(b);
     writeFileSync(join(dir, "order-a.typ"), a);
     writeFileSync(join(dir, "order-b.typ"), b);
-    expect(headingOrder((await pages(join(dir, "order-a.typ"))).join("\n"))).toEqual(["Profile", "Skills", "Experience", "Projects", "Education", "Certifications"]);
-    expect(headingOrder((await pages(join(dir, "order-b.typ"))).join("\n"))).toEqual(["Certifications", "Education", "Projects", "Experience", "Profile", "Skills"]);
+    expect((await sectionOrder(join(dir, "order-a.typ")))).toEqual(["Profile", "Skills", "Experience", "Projects", "Education", "Certifications"]);
+    expect((await sectionOrder(join(dir, "order-b.typ")))).toEqual(["Certifications", "Education", "Projects", "Experience", "Profile", "Skills"]);
   }, 60_000);
 
   test("a section left out of the order is appended, never dropped", async () => {
     const draft = draftWithProject();
     draft.strategy.sectionOrder = ["summary", "education"];
     writeFileSync(join(dir, "order-partial.typ"), renderCvTypst({ profile: applicationProfile, draft, outDir: dir }));
-    expect(headingOrder((await pages(join(dir, "order-partial.typ"))).join("\n"))).toEqual(["Profile", "Skills", "Education", "Experience", "Projects", "Certifications"]);
+    expect((await sectionOrder(join(dir, "order-partial.typ")))).toEqual(["Profile", "Skills", "Education", "Experience", "Projects", "Certifications"]);
   }, 60_000);
 
   test("project-first lifts projects under the summary within the strategy's order", async () => {
     const draft = draftWithProject();
     writeFileSync(join(dir, "project-first.typ"), renderCvTypst({ profile: applicationProfile, draft, outDir: dir, layout: "project-first" }));
-    expect(headingOrder((await pages(join(dir, "project-first.typ"))).join("\n")).slice(0, 4)).toEqual(["Profile", "Skills", "Projects", "Experience"]);
+    expect((await sectionOrder(join(dir, "project-first.typ"))).slice(0, 4)).toEqual(["Profile", "Skills", "Projects", "Experience"]);
   }, 60_000);
 });
 
@@ -112,7 +120,7 @@ describe("education", () => {
 // section heading ended page 1 with its first entry overleaf. Sweep the amount of
 // filler so some heading lands at every position near the page foot.
 describe("pagination", () => {
-  test("no section heading ends a page, in any layout, whatever the content length", async () => {
+  test.skipIf(!HAS_PDFTOTEXT)("no section heading ends a page, in any layout, whatever the content length", async () => {
     const orphans: string[] = [];
     for (const { id: layout } of CV_LAYOUTS) for (let n = 0; n < 14; n++) {
       const filler = Array.from({ length: n }, (_, i) => `"Filler achievement ${i} describing delivery work in plain words for spacing tests."`).join(", ");

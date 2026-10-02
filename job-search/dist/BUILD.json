@@ -1,7 +1,7 @@
 {
-  "sourceHash": "623227101f90142b3d6e47d7c4f2fbe50defac6e83e656e3b0d1e419e9b606e7",
+  "sourceHash": "568aae1cea4fa1db792e4c6ee922c5992e88ae976e0cea845c1a9150de47a5b5",
   "bun": "1.3.14",
-  "bytes": 1068994,
+  "bytes": 1069154,
   "files": {
     "dist/jobsearch.js": "4bf61789b33ca93b2573b444327ffc2c8b5b0d826d065edcbf2cb950d50ac1a1",
     "dist/portals/alljobs.js": "c6f2f8710e448f4413e60da969658fd62d2f76fc830835a9e28b42942715b707",
@@ -23,8 +23,8 @@
     "templates/cv/banking/template.typ": "3042a9b069ad1a17ce85a6e0805366271a129b2429252b4b1d966d3ba659e1d0",
     "templates/cv/creative/meta.json": "e7a56c70f5a79e623b03b3f000195e82f450c4b389d208ca02bec190479ee507",
     "templates/cv/modern/meta.json": "7c27e9431c42a03cb88744f65bfb416b97f88379f167f44f8403b7ad7049d8a4",
-    "templates/cv/modern/template.typ": "ce05c5ba0dad5c945410ce571987d622f6bcd927ffc17014b26c249a523800ea",
-    "templates/design-system.typ": "ec7a7ecb86294b754f25618d64ebd2269a78e1d04b907f38c2e07a865306cc78",
+    "templates/cv/modern/template.typ": "3cb7283e4b0731ea88dc063a13da17c0fe5a88e349d0d75ca9a6ab75f052c867",
+    "templates/design-system.typ": "15d4f11d33d11e79dd8ff397ac0e2713a0df46efc4929675c5cdd95b7ff92e11",
     "data/profile.json.example": "e143ab6199bc126466b3b672cd360aee96e37e72e65dbe481b97260de0a8c95d"
   }
 }

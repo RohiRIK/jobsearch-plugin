@@ -34,6 +34,8 @@
   // the heading and the next block counts as intervening content and cancels
   // the stickiness.
   block(breakable: false, sticky: true, above: gap-section, below: 4pt, {
+    // The label lets tests read section order with `typst query`, without Poppler.
+    [#metadata(title) <cv-section>]
     text(size: size-section, weight: "bold", fill: fill)[#title]
     v(2pt)
     line(length: 100%, stroke: 0.4pt + fill)

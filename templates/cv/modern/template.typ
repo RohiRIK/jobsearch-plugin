@@ -66,6 +66,7 @@
     } else {
       // Same keep-with-next contract as section-title; only the look differs.
       block(breakable: false, sticky: true, above: gap-section, below: 4pt, {
+        [#metadata(title) <cv-section>]
         if style.heading == "swiss" {
           line(length: 100%, stroke: 1.4pt + style-accent)
           v(3pt)
