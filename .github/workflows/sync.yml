@@ -1,0 +1,45 @@
+name: Sync
+
+# Regenerates this repository from the private source with the source's
+# scripts/publish/sync-public.sh, then pushes. The push uses SYNC_TOKEN so it
+# triggers CI, and CI success triggers Release when the version is new.
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: public
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: RohiRIK/ai-enhanced-job-search
+          path: source
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Regenerate and commit
+        run: |
+          before=$(git -C public rev-parse HEAD)
+          source/scripts/publish/sync-public.sh public
+          if [ "$(git -C public rev-parse HEAD)" != "$before" ]; then
+            git -C public push origin HEAD:main
+          fi
