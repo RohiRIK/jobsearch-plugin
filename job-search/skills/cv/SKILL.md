@@ -114,7 +114,9 @@ jobsearch gate --company "<Company>" --role "<Role>"
 choice is their approval for `--yes`. If it refuses with `LANGUAGE_CHOICE_REQUIRED`,
 the draft's language differs from the posting's: show the user both languages and the
 profile's `candidateLanguages`, and pass `--language` only after they choose. Its
-output lists the profile links `included` and `omitted`; `--links` narrows them. `gate` (the reevaluate gate, compact: failing
+output lists the profile links `included` and `omitted`; `--links` narrows them. If the
+gate fails `layout:density`, re-run render with `--fit`: it tests the other layouts and
+reports which fit. Show the user that list; change `--layout` only on their choice. `gate` (the reevaluate gate, compact: failing
 gates and fix hints only; `--verbose` for all) always recompiles current Typst imports, then gates the selected market's CV page budget (cover letter = 1),
 192-PPI raster layout safety, page density, ATS text layer, and naming. Pass the detected or forced market code.
 

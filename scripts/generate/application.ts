@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ApplicationDraft, buildApplicationBrief, reviewApplicationDraft } from "../../src/application-draft.js";
+import type { FitReport } from "./fit.js";
 import { PROFILE_LINKS, renderCoverLetterTypst, renderCvTypst, selectedLinks, type ProfileLink } from "../../src/application-renderers.js";
 import { detectMarket, getMarketProfile, resolvePostingLanguage } from "../../src/market-profiles.js";
 import { Profile } from "../../src/profile-schemas.js";
@@ -36,6 +37,8 @@ OPTIONS
   --market <code>        Force a market (de, dk, ch, ie...); detected from the posting otherwise
   --cv-template <name>   Typst CV template (default: modern)
   --links <list>         Profile links on the CV: linkedin,github,blog (default: all the profile has)
+  --fit                  After rendering, if the CV's last page is nearly empty or off budget, test the
+                         other layouts and report which fit. Never switches layout.
   --layout <name>            Chosen CV layout variant (required for render)
   --cl-template <name>   Typst cover template (default: modern)
   --date <YYYY-MM-DD>    Grouped output date (default: today)
@@ -66,6 +69,7 @@ interface CliOptions {
   date?: string;
   links?: string;
   compile: boolean;
+  fit: boolean;
   force: boolean;
 }
 
@@ -83,6 +87,7 @@ interface ParsedValues {
   date?: string;
   links?: string;
   compile: boolean;
+  fit: boolean;
   force: boolean;
   help: boolean;
 }
@@ -253,9 +258,24 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
     }
   }
 
+  let fit: FitReport | undefined;
+  if (options.fit) {
+    const { fitReport } = await import("./fit.js");
+    fit = await fitReport({
+      render: (id) => renderCvTypst({
+        profile, draft, outDir: dirname(cvPath), template: options.cvTemplate, market: brief.market, photo, layout: id,
+        supportsAvatar: CV_LAYOUTS.find((option) => option.id === id)?.supportsAvatar ?? false, links: links.included,
+      }),
+      cvPath,
+      chosen: layout,
+      budget: marketProfile.pages,
+      layouts: CV_LAYOUTS,
+    });
+  }
+
   process.stdout.write(
     JSON.stringify(
-      { written: true, files: { cv: cvRelative, coverLetter: clRelative }, links, language: languageNote, compiled, review: reviewResult, next: `bun run reevaluate --company ${JSON.stringify(draft.company)} --role ${JSON.stringify(draft.role)} --market ${brief.market}` },
+      { written: true, files: { cv: cvRelative, coverLetter: clRelative }, links, language: languageNote, compiled, ...(fit ? { fit } : {}), review: reviewResult, next: `bun run reevaluate --company ${JSON.stringify(draft.company)} --role ${JSON.stringify(draft.role)} --market ${brief.market}` },
       null,
       2,
     ) + "\n",
@@ -282,6 +302,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
         date: { type: "string" },
         links: { type: "string" },
         compile: { type: "boolean", default: false },
+        fit: { type: "boolean", default: false },
         force: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -325,6 +346,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
     date: values.date,
     links: values.links,
     compile: values.compile,
+    fit: values.fit,
     force: values.force,
   };
 

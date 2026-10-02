@@ -1,6 +1,6 @@
 {
   "name": "@rohi/job-search-agent-plugin",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "Evidence-grounded job-search workflows for AI coding agents.",

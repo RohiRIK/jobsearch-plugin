@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.3.0 - 2026-10-02
+
+### Added
+- **`render --fit`.** When the chosen CV layout leaves the last page nearly empty or breaks the market's page budget, render compiles the other layouts on the same content and reports which fit, densest first, with page counts. It never switches layout; the agent shows the list and re-renders only with the layout the user picks. The density hint and the `cv` skill point to it (RohiRIK/jobsearch-plugin#7).
+
 ## 2.2.0 - 2026-10-02
 
 ### Added

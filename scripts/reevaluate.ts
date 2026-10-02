@@ -50,7 +50,7 @@ function sameUrl(a: string, b: string): boolean {
 export function densityHint(expected: readonly [number, number], pages: number | null): string {
   const denser = CV_LAYOUTS.filter((option) => option.density === "compact").map((option) => option.id);
   const fewer = pages !== null && pages > expected[0] ? `; or tighten the draft to ${expected[0]} page(s), which this market allows` : "";
-  return `the last page is mostly empty: re-render with a denser layout (${denser.join(", ")}) via \`jobsearch render … --layout <id> --force\`${fewer}; or add verified evidence the profile already holds. Never pad, and never drop a true fact just to pass`;
+  return `the last page is mostly empty: \`jobsearch render … --fit\` reports which layouts fit this content (denser ones: ${denser.join(", ")}); re-render with the one the user picks via --layout <id> --force${fewer}; or add verified evidence the profile already holds. Never pad, and never drop a true fact just to pass`;
 }
 
 /**
