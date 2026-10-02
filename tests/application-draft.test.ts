@@ -176,6 +176,16 @@ describe("application drafting contract", () => {
       expect(letterWith("Kubernetes is where I do my best work.")).toContain("GAP_AS_CLAIM");
     });
 
+    // Issue #13: declaring the gap licensed any letter sentence that named it.
+    test("a declared gap licenses disclosure, not an affirmative claim", () => {
+      expect(letterWith("I have run Kubernetes in production for years.", true)).toContain("GAP_AS_CLAIM");
+      expect(letterWith("Kubernetes is where I do my best work.", true)).toContain("GAP_AS_CLAIM");
+      expect(letterWith("I have not run Kubernetes in production yet and would need to learn it.", true)).not.toContain("GAP_AS_CLAIM");
+      expect(letterWith("My orchestration experience is Docker Swarm rather than Kubernetes.", true)).not.toContain("GAP_AS_CLAIM");
+      expect(letterWith("Your posting asks for Kubernetes at scale.", true)).not.toContain("GAP_AS_CLAIM");
+      expect(letterWith("The role requires Kubernetes, and I have run it for years.", true)).toContain("GAP_AS_CLAIM");
+    });
+
     test("the CV gets no attribution latitude", () => {
       const draft = validApplicationDraft();
       draft.cv.summary = { text: `${draft.cv.summary.text} The posting asks for Kubernetes.`, evidenceIds: draft.cv.summary.evidenceIds };

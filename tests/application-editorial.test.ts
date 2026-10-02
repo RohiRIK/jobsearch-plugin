@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { buildApplicationBrief, reviewApplicationDraft } from "../src/application-draft.js";
 import { renderCvTypst, selectedLinks } from "../src/application-renderers.js";
-import { detectTextLanguage } from "../src/market-profiles.js";
+import { detectMarket, detectTextLanguage, getMarketProfile, resolvePostingLanguage } from "../src/market-profiles.js";
 import { applicationPosting, applicationProfile, validApplicationDraft } from "./fixtures/application.js";
 
 // Issue #8: editorial defects the gates did not catch.
@@ -45,6 +45,39 @@ describe("posting language", () => {
     expect(englishInDenmark.language).toBe("English");
     const danish = buildApplicationBrief({ profile: applicationProfile, posting: DANISH, company: "Kommune", role: "Sikkerhedsarkitekt", market: "dk" });
     expect(danish.language).toBe("Danish");
+  });
+});
+
+// Issue #14: a Danish posting full of "du" and "et" (shared with French) came
+// back null, and the Danish market default (English) was then taken as the
+// posting's language, so no confirmation was asked for.
+const DANISH_DU_ET = `Har du lyst til at sætte retningen for informationssikkerheden i en stor kommune? Vi søger en erfaren
+sikkerhedsarkitekt, der kan omsætte krav fra lovgivning og standarder til konkrete løsninger. Du bliver en del af et
+engageret team, som arbejder tæt sammen med it-drift og jura. Du udarbejder sikkerhedsarkitekturen for kommunens systemer,
+og du deltager i risikovurderinger. Du har en relevant uddannelse og erfaring med identitets- og adgangsstyring, og du er
+god til at formidle komplekse emner. Vi tilbyder et spændende job med gode muligheder for faglig udvikling.`;
+
+describe("posting language resolution", () => {
+  test("a Danish posting with du/et is Danish, not French and not unknown", () => {
+    expect(detectTextLanguage(DANISH_DU_ET)).toBe("Danish");
+    expect(resolvePostingLanguage(getMarketProfile("dk")!, DANISH_DU_ET)).toEqual({ language: "Danish", source: "detected" });
+  });
+  test("an explicit working-language statement still wins", () => {
+    expect(resolvePostingLanguage(getMarketProfile("dk")!, `${DANISH_DU_ET} The working language is English.`)).toEqual({ language: "English", source: "stated" });
+  });
+  test("too little text is reported as a market default, not as a detected language", () => {
+    expect(resolvePostingLanguage(getMarketProfile("dk")!, "Sikkerhedsarkitekt, Kubernetes, Entra ID.")).toEqual({ language: "English", source: "market-default" });
+  });
+});
+
+describe("market detection", () => {
+  test("place names match whole words only", () => {
+    expect(detectMarket("Requirements: Python, Terraform, Kubernetes.").code).toBe("unknown");
+    expect(detectMarket("Baseline hardening; coffee aroma.").code).toBe("unknown");
+    expect(detectMarket("Office in Bern").code).toBe("ch");
+    expect(detectMarket("Office in Malmö").code).toBe("se");
+    expect(detectMarket("Dansktalende kollega i København").code).toBe("dk");
+    expect(detectMarket("משרה בתל אביב").code).toBe("il");
   });
 });
 
@@ -94,11 +127,21 @@ describe("render language decision", () => {
     expect(err.details).toMatchObject({ draftLanguage: "English", postingLanguage: "Danish", candidateLanguages: ["English"] });
   });
 
+  test("when the posting's language is unknown in a multi-language market, the choice is still required", () => {
+    writeFileSync(join(dir, "short.txt"), "Sikkerhedsarkitekt. Kubernetes, Entra ID. København.");
+    const proc = Bun.spawnSync([process.execPath, join(ROOT, "scripts/generate/application.ts"), "render", "--draft", join(dir, "draft.json"), "--job", join(dir, "short.txt"), "--layout", "modern", "--force"], {
+      env: { ...process.env, JOB_SEARCH_HOME: join(dir, "home") },
+    });
+    const err = JSON.parse(proc.stderr.toString());
+    expect(err.code).toBe("LANGUAGE_CHOICE_REQUIRED");
+    expect(err.details).toMatchObject({ postingLanguage: null, postingLanguageSource: "market-default", marketLanguages: ["English", "Danish"] });
+  });
+
   test("confirming the language renders and reports the decision", () => {
     const run = render(["--language", "English"]);
     const out = JSON.parse(run.stdout.toString());
     expect(out.written).toBe(true);
-    expect(out.language).toEqual({ document: "English", posting: "Danish", candidateLists: true });
+    expect(out.language).toEqual({ document: "English", posting: "Danish", postingSource: "detected", candidateLists: true });
     expect(out.links).toEqual({ included: ["linkedin", "blog"], omitted: [] });
     expect(readFileSync(join(dir, "home", out.files.cv), "utf-8")).toContain("[LinkedIn]");
   });

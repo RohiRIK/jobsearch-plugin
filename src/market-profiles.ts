@@ -380,10 +380,29 @@ export function getMarketProfile(code: string): MarketProfile | undefined {
  * mentions another country in passing ("our London office also hiring").
  * Ties break toward the earlier profile, which puts the home market first.
  */
+/** Endonym adjectives match as prefixes: "dansk" must also catch "dansktalende". */
+const PREFIX_PATTERNS = new Set(["dansk", "norsk", "svensk"]);
+
+/**
+ * Place names match as whole words. Substrings misfired on ordinary text:
+ * "bern" inside "Kubernetes" made any Kubernetes posting Swiss, and "basel"
+ * (baseline), "roma" (aroma), "lille" (Danish "small") did the same elsewhere.
+ */
+function bounded(pattern: RegExp): RegExp {
+  const src = pattern.source;
+  // Already bounded, or a bare character class (any Hebrew letter) that must match inside words.
+  if (src.includes("\\b") || /^\[[^\]]*\]$/.test(src) || !/^[\p{L}(\[]/u.test(src)) return pattern;
+  // Lookarounds on \p{L}, not \b: \b treats "ö" as a non-letter, so "malm[öo]\b" missed "Malmö".
+  const start = "(?<![\\p{L}\\p{N}])";
+  const end = PREFIX_PATTERNS.has(src) ? "" : "(?![\\p{L}\\p{N}])";
+  return new RegExp(`${start}(?:${src})${end}`, pattern.flags.includes("u") ? pattern.flags : `${pattern.flags}u`);
+}
+const DETECTORS = new Map(MARKET_PROFILES.map((profile) => [profile, profile.patterns.map(bounded)]));
+
 export function detectMarket(posting: string): MarketProfile {
   let best: { profile: MarketProfile; hits: number } | null = null;
   for (const profile of MARKET_PROFILES) {
-    const hits = profile.patterns.filter((p) => p.test(posting)).length;
+    const hits = (DETECTORS.get(profile) ?? profile.patterns).filter((p) => p.test(posting)).length;
     if (hits > 0 && (best === null || hits > best.hits)) best = { profile, hits };
   }
   return best?.profile ?? UNKNOWN_MARKET;
@@ -438,43 +457,64 @@ export function conventionsBlock(profile: MarketProfile): string {
  * default applies.
  */
 /**
- * The language a posting is written in, by its commonest function words; null
- * when the text is too short or no language clearly leads. Hebrew is detected
- * by script. Deliberately small: it only has to tell a Danish posting from an
- * English one, not translate anything.
+ * The language a posting is written in, by function words; null when the text is
+ * too short or no language clearly leads. Hebrew is detected by script.
+ *
+ * Two stages, because Danish, Norwegian and Swedish share most short words with
+ * each other and a few with French ("du", "et"): the shared Scandinavian words
+ * first decide the family, then only words that differ between the three decide
+ * which one. A word two candidate languages share is never counted (issue #14:
+ * a Danish posting scored as French on "du" and "et").
  */
 export function detectTextLanguage(text: string): string | null {
   if ((text.match(/[\u0590-\u05FF]/g) ?? []).length > 40) return "Hebrew";
   const words = text.toLowerCase().match(/[a-zæøåäöüßéèàç]+/g) ?? [];
   if (words.length < 30) return null;
-  // Each list holds words that mark one language against its neighbours; a word
-  // two close languages share (Danish/Norwegian/Swedish "det", "med") decides nothing.
-  const STOP: Record<string, string[]> = {
+  const hits = (list: string[]) => {
+    const set = new Set(list);
+    return words.filter((word) => set.has(word)).length;
+  };
+  const pick = (lists: Record<string, string[]>, min: number): string | null => {
+    const [best, next] = Object.entries(lists).map(([language, list]) => ({ language, n: hits(list) })).sort((a, b) => b.n - a.n);
+    return best.n >= min && best.n >= next.n * 1.5 ? best.language : null;
+  };
+  const family = pick({
     English: ["the", "and", "of", "to", "with", "you", "for", "our", "are", "will", "is", "in"],
-    // Danish and Norwegian share most function words; only words that differ count.
-    Danish: ["af", "vores", "efter", "meget", "dig", "mig", "hvad", "arbejde", "udvikling", "tilbyder", "ansøgning", "spændende", "virksomhed"],
+    Scandinavian: ["og", "och", "er", "är", "til", "med", "på", "som", "vi", "det", "har", "kan", "ikke", "inte", "en", "du"],
     German: ["und", "der", "die", "das", "mit", "für", "wir", "sie", "ist", "ein", "zu", "von"],
     Dutch: ["het", "van", "een", "wij", "voor", "zijn", "niet", "ook", "bij", "naar", "werken", "ontwikkeling"],
-    Swedish: ["och", "att", "är", "för", "inte", "oss", "vår", "våra", "arbeta", "utveckling", "erbjuder", "ansökan"],
-    Norwegian: ["av", "våre", "etter", "mye", "deg", "meg", "hva", "arbeide", "utvikling", "tilbyr", "søknad", "spennende", "virksomhet"],
-    French: ["et", "le", "les", "des", "pour", "vous", "nous", "avec", "est", "une", "dans", "du"],
+    French: ["le", "les", "des", "pour", "vous", "nous", "avec", "est", "une", "dans", "sur", "aux"],
     Spanish: ["y", "el", "los", "las", "para", "con", "que", "una", "es", "por", "del", "nuestro"],
-  };
-  const counts = Object.entries(STOP).map(([language, stop]) => {
-    const set = new Set(stop);
-    return { language, hits: words.filter((word) => set.has(word)).length };
-  }).sort((a, b) => b.hits - a.hits);
-  const [best, next] = counts;
-  return best.hits >= 5 && best.hits >= next.hits * 1.3 ? best.language : null;
+  }, 5);
+  if (family !== "Scandinavian") return family;
+  return pick({
+    Danish: ["af", "vores", "efter", "meget", "dig", "mig", "hvad", "nu", "bliver", "kender", "arbejde", "arbejder", "udvikling", "tilbyder", "ansøgning", "spændende", "virksomhed", "opgaver", "uddannelse", "deltager", "løsning", "løsninger", "erfaren", "sætte"],
+    Norwegian: ["av", "våre", "etter", "mye", "deg", "meg", "hva", "nå", "blir", "kjenner", "arbeide", "arbeider", "utvikling", "tilbyr", "søknad", "spennende", "virksomhet", "oppgaver", "utdanning", "deltar", "løsning", "erfaring"],
+    Swedish: ["och", "att", "är", "för", "inte", "oss", "vår", "våra", "arbeta", "utveckling", "erbjuder", "ansökan", "uppgifter", "utbildning", "blir", "dig"],
+  }, 3);
+}
+
+export interface PostingLanguage {
+  language: string;
+  /** How it was decided. "market-default" means the posting gave no reliable signal. */
+  source: "stated" | "detected" | "market-default";
 }
 
 /**
  * The language an application to this posting is expected in: an explicit
  * statement wins, then the language the posting is written in, then the
- * market default.
+ * market default — reported as such, so a guess is never treated as a fact.
  */
+export function resolvePostingLanguage(profile: MarketProfile, posting: string): PostingLanguage {
+  const stated = statedLanguage(posting);
+  if (stated) return { language: stated, source: "stated" };
+  const detected = detectTextLanguage(posting);
+  if (detected) return { language: detected, source: "detected" };
+  return { language: profile.languages[0] ?? "English", source: "market-default" };
+}
+
 export function postingLanguage(profile: MarketProfile, posting: string): string {
-  return statedLanguage(posting) ?? detectTextLanguage(posting) ?? profile.languages[0] ?? "English";
+  return resolvePostingLanguage(profile, posting).language;
 }
 
 export function preferredLanguage(profile: MarketProfile, posting: string): string {

@@ -397,6 +397,13 @@ export function describesEmployerOnly(sentence: string): boolean {
   return EMPLOYER_CUE.some((cue) => cue.test(sentence)) && !FIRST_PERSON.test(sentence);
 }
 
+const GAP_DISCLOSURE = /\b(?:not yet|have not|haven't|has not|hasn't|do not have|don't have|never (?:used|worked|run)|no (?:hands-on |production |professional |direct )?experience|limited (?:experience|exposure)|rather than|instead of|(?:would|will) need to learn|plan to learn|(?:am|I'm) (?:currently )?learning|new to|less experience|not (?:used|worked with|run))\b/i;
+
+/** A sentence that states a limitation (negation, "rather than", "would need to learn") rather than a capability. */
+export function disclosesGap(sentence: string): boolean {
+  return GAP_DISCLOSURE.test(sentence);
+}
+
 function containsTerm(text: string, term: string): boolean {
   const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return escaped.length > 1 && new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
@@ -495,13 +502,19 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
   // asks for automation and scripting." names the gap without claiming it (#6).
   // Such sentences are dropped from the letter scan; one that also speaks in the
   // first person ("…and I have deep scripting experience") is still scanned.
+  //
+  // Declaring a gap licenses disclosure, not claims: the exemption is per
+  // sentence, so "I have run Terraform in production for years" fails even with
+  // Terraform in honestGaps, while "I have not used Terraform yet" passes
+  // (issue #13). An undeclared gap may not appear in any candidate sentence.
   const declaredGaps = draft.strategy.honestGaps;
-  const candidateLetterText = splitSentences(letterText).filter((sentence) => !describesEmployerOnly(sentence)).join(" ");
+  const candidateSentences = splitSentences(letterText).filter((sentence) => !describesEmployerOnly(sentence));
   for (const gap of brief.gaps) {
     const skill = gap.replace(/^.*?:\s*/, "").replace(/\s+vs\s+.*$/, "").trim();
     if (!skill || containsTerm(profileEvidenceText, skill)) continue;
     const declared = declaredGaps.some((entry) => containsTerm(entry, skill));
-    if (containsTerm(cvText, skill) || (!declared && containsTerm(candidateLetterText, skill))) {
+    const claimedInLetter = candidateSentences.some((sentence) => containsTerm(sentence, skill) && !(declared && disclosesGap(sentence)));
+    if (containsTerm(cvText, skill) || claimedInLetter) {
       findings.push({ severity: "error", code: "GAP_AS_CLAIM", message: `Draft claims an unsupported gap: ${skill}` });
     }
   }

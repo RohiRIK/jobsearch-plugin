@@ -46,5 +46,20 @@ describe("render and gate agree on where documents live", () => {
       expect(doc.gates.find((g) => g.gate === "exists")).toBeUndefined();
       expect(doc.gates.find((g) => g.gate === "naming")?.pass).toBe(true);
     }
+    // Issue #8: link annotations are checked against the profile.
+    expect(docs[0].gates.find((g) => g.gate === "links")?.pass).toBe(true);
+  }, 120_000);
+
+  test("a CV link the profile no longer has fails the links gate", async () => {
+    const changed = { ...applicationProfile, identity: { ...applicationProfile.identity, linkedin: "https://linkedin.com/in/placeholder" } };
+    writeFileSync(join(home, "data", "profile.json"), JSON.stringify(changed));
+    try {
+      const gate = await js(["gate", "--company", "Acme", "--role", "Platform Engineer", "--type", "cv", "--allow-missing-ats", "--verbose"]);
+      const links = gate.out.data.documents[0].gates.find((g: { gate: string }) => g.gate === "links");
+      expect(links.pass).toBe(false);
+      expect(links.detail).toContain("https://linkedin.com/in/alex");
+    } finally {
+      writeFileSync(join(home, "data", "profile.json"), JSON.stringify(applicationProfile));
+    }
   }, 120_000);
 });

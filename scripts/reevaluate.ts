@@ -32,6 +32,17 @@ Gates (in order):
 Output: JSON { documents: [{ file, docType, gates, pass }], pass }.
 Exit 0 only when every gate on every document passes — iterate until green.`;
 
+/** URI targets of the PDF's link annotations. Typst writes them as plain `/URI (…)` strings on every version. */
+export function pdfLinkTargets(pdf: Uint8Array): string[] {
+  const text = new TextDecoder("latin1").decode(pdf);
+  return [...text.matchAll(/\/URI\s*\(((?:\\.|[^\\)])*)\)/g)].map((m) => m[1].replace(/\\(.)/g, "$1"));
+}
+
+function sameUrl(a: string, b: string): boolean {
+  const norm = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+  return norm(a) === norm(b);
+}
+
 /**
  * An underfilled last CV page is usually a few lines spilling over. Name the
  * concrete moves, densest first, and the one thing never to do (issue #7).
@@ -74,7 +85,7 @@ export interface DocReport {
 export async function reevaluateDoc(
   sourceOrPdf: string,
   docType: "cv" | "cl",
-  options: { allowMissingAts?: boolean; market?: string; profileName?: string } = {},
+  options: { allowMissingAts?: boolean; market?: string; profileName?: string; profileLinks?: string[] } = {},
 ): Promise<DocReport> {
   const gates: Gate[] = [];
   const abs = resolve(ROOT, sourceOrPdf);
@@ -181,6 +192,24 @@ export async function reevaluateDoc(
     }
   }
 
+  // Every clickable link must be a well-formed web address the profile owns.
+  // ATS reads the text layer; a human clicks the annotation, so a typo or an
+  // invented URL there is invisible to every other gate (issue #8).
+  if (existsSync(pdfPath)) {
+    const uris = pdfLinkTargets(readFileSync(pdfPath));
+    const malformed = uris.filter((uri) => !/^https?:\/\/[^\s/]+\.[^\s]+$/.test(uri));
+    const unknown = options.profileLinks ? uris.filter((uri) => !options.profileLinks!.some((link) => sameUrl(link, uri))) : [];
+    const bad = [...new Set([...malformed, ...unknown])];
+    gates.push({
+      gate: "links",
+      pass: bad.length === 0,
+      detail: bad.length === 0
+        ? `${uris.length} link${uris.length === 1 ? "" : "s"}${options.profileLinks ? ", all from the profile" : " (no profile to compare against)"}`
+        : `link target${bad.length > 1 ? "s" : ""} not in the profile or malformed: ${bad.join(", ")}`,
+      hint: bad.length === 0 ? undefined : "links come from data/profile.json identity and projects; fix the profile URL or re-render, never hand-edit the document",
+    });
+  }
+
   const parsed = parseFileName(basename(pdfPath, ".pdf"));
   const expectedPrefix = options.profileName ? documentNameSlug(options.profileName) : null;
   const actualPrefix = basename(pdfPath, ".pdf").split("_")[0] ?? "";
@@ -252,9 +281,13 @@ export async function main(): Promise<number> {
   // render never wrote (issue #11). The default profile path matches render's.
   const profilePath = resolve(process.cwd(), typeof values.profile === "string" ? values.profile : join(ROOT, "data", "profile.json"));
   let profileName: string | undefined;
+  let profileLinks: string[] | undefined;
   if (existsSync(profilePath)) {
     try {
-      profileName = profileDocumentName(Profile.parse(JSON.parse(readFileSync(profilePath, "utf-8"))).identity) || undefined;
+      const profile = Profile.parse(JSON.parse(readFileSync(profilePath, "utf-8")));
+      profileName = profileDocumentName(profile.identity) || undefined;
+      const { linkedin, github, blog } = profile.identity;
+      profileLinks = [linkedin, github, blog, ...(profile.projects ?? []).map((project) => project.link)].filter((link): link is string => Boolean(link));
     } catch {
       profileName = undefined;
     }
@@ -282,6 +315,7 @@ export async function main(): Promise<number> {
       allowMissingAts: values["allow-missing-ats"] === true,
       ...(typeof values.market === "string" ? { market: values.market } : {}),
       ...(profileName ? { profileName } : {}),
+      ...(profileLinks ? { profileLinks } : {}),
     }));
   }
   const pass = documents.every((d) => d.pass);

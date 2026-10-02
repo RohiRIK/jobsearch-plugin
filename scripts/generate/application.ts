@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ApplicationDraft, buildApplicationBrief, reviewApplicationDraft } from "../../src/application-draft.js";
 import { PROFILE_LINKS, renderCoverLetterTypst, renderCvTypst, selectedLinks, type ProfileLink } from "../../src/application-renderers.js";
-import { detectMarket, getMarketProfile, postingLanguage } from "../../src/market-profiles.js";
+import { detectMarket, getMarketProfile, resolvePostingLanguage } from "../../src/market-profiles.js";
 import { Profile } from "../../src/profile-schemas.js";
 import { CV_LAYOUTS, RENDERABLE_CV_TEMPLATES } from "../../src/cv-options.js";
 import { buildSourcePath, loadConfig, profileDocumentName } from "../../src/naming.js";
@@ -161,23 +161,40 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   const blockingMissingFacts = brief.missingFacts.filter((fact) => ["candidate name", "email", "experience"].includes(fact));
   if (blockingMissingFacts.length > 0) return error("profile is incomplete for document rendering", "MISSING_PROFILE_FACTS", blockingMissingFacts);
 
+  assertTemplate("cv", options.cvTemplate);
+  if (!(RENDERABLE_CV_TEMPLATES as readonly string[]).includes(options.cvTemplate)) {
+    return error(`CV template '${options.cvTemplate}' cannot be filled by application render; it takes a different input shape`, "BAD_TEMPLATE", { renderable: RENDERABLE_CV_TEMPLATES, layouts: CV_LAYOUTS.map((option) => option.id) });
+  }
+
   // Writing in another language than the posting's is a decision, not a default
   // (issue #8): an English letter to a Danish-language municipal posting needs
   // someone to have chosen it, knowing which languages the profile lists.
   const marketProfile = getMarketProfile(brief.market) ?? detectMarket(posting);
-  const expectedLanguage = postingLanguage(marketProfile, posting);
+  const resolved = resolvePostingLanguage(marketProfile, posting);
+  const expectedLanguage = resolved.language;
   const candidateLanguages = profile.identity.languages ?? [];
   const sameLanguage = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-  if (!sameLanguage(draft.language, expectedLanguage) && !(options.language && sameLanguage(options.language, draft.language))) {
-    return error(`the draft is in ${draft.language} but the posting expects ${expectedLanguage}; confirm with --language ${draft.language} or redraft`, "LANGUAGE_CHOICE_REQUIRED", {
+  const confirmed = Boolean(options.language && sameLanguage(options.language, draft.language));
+  // When the posting gave no reliable signal in a market with several working
+  // languages, the market default is a guess, not the posting's language
+  // (issue #14): the choice still has to be made by someone.
+  const uncertain = resolved.source === "market-default" && marketProfile.languages.length > 1;
+  if (!confirmed && (uncertain || !sameLanguage(draft.language, expectedLanguage))) {
+    const message = uncertain
+      ? `the posting's language could not be determined (${marketProfile.name} uses ${marketProfile.languages.join(" and ")}); confirm the document language with --language ${draft.language} or redraft`
+      : `the draft is in ${draft.language} but the posting expects ${expectedLanguage}; confirm with --language ${draft.language} or redraft`;
+    return error(message, "LANGUAGE_CHOICE_REQUIRED", {
       draftLanguage: draft.language,
-      postingLanguage: expectedLanguage,
+      postingLanguage: uncertain ? null : expectedLanguage,
+      postingLanguageSource: resolved.source,
+      marketLanguages: marketProfile.languages,
       candidateLanguages,
     });
   }
   const languageNote = {
     document: draft.language,
-    posting: expectedLanguage,
+    posting: uncertain ? null : expectedLanguage,
+    postingSource: resolved.source,
     candidateLists: candidateLanguages.some((language) => sameLanguage(language, draft.language)),
   };
 
@@ -186,10 +203,6 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   if (unknownLink) return error(`unknown link '${unknownLink}'`, "BAD_ARGS", { available: Object.keys(PROFILE_LINKS) });
   const links = selectedLinks(profile, requestedLinks as ProfileLink[] | undefined);
 
-  assertTemplate("cv", options.cvTemplate);
-  if (!(RENDERABLE_CV_TEMPLATES as readonly string[]).includes(options.cvTemplate)) {
-    return error(`CV template '${options.cvTemplate}' cannot be filled by application render; it takes a different input shape`, "BAD_TEMPLATE", { renderable: RENDERABLE_CV_TEMPLATES, layouts: CV_LAYOUTS.map((option) => option.id) });
-  }
   assertTemplate("cover", options.clTemplate);
   const namingConfig = { ...loadConfig(), name: profileDocumentName(profile.identity) };
   const cvRelative = buildSourcePath("cv", draft.company, draft.role, namingConfig, options.date);

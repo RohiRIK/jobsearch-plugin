@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.2.0 - 2026-10-02
+
+### Added
+- **`links` shipping gate.** Every clickable link in a CV or letter must be a well-formed http(s) URL that the profile owns (identity or project links). A stale or invented link now fails instead of shipping unseen (RohiRIK/jobsearch-plugin#8).
+
+### Fixed
+- **Declared honest gaps no longer license claims.** The cover-letter gap check is per sentence. A declared gap still allows disclosure ("I have not used Terraform yet", "Docker Swarm rather than Kubernetes"), but an affirmative first-person sentence about it ("I have run Terraform in production for years") fails `GAP_AS_CLAIM` (RohiRIK/jobsearch-plugin#13).
+- **Danish postings are recognised as Danish.** Detection now decides the language family first, then among Danish, Norwegian and Swedish by words that differ. "du" and "et" no longer count for French (RohiRIK/jobsearch-plugin#14).
+- **No silent language guess.** When a posting gives no reliable language signal in a market with several working languages, `render` asks for an explicit `--language` instead of treating the market default as the posting's language (RohiRIK/jobsearch-plugin#14).
+- **Market detection matches whole words.** "bern" inside "Kubernetes" made any Kubernetes posting Swiss; "basel" (baseline) and "roma" (aroma) misfired the same way. Unicode-aware boundaries also fix "Malmö".
+- `render` checks the CV template before the language, so `BAD_TEMPLATE` is reported first.
+
 ## 2.1.0 - 2026-10-02
 
 ### Added
