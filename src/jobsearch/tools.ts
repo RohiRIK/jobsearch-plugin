@@ -24,8 +24,10 @@ export function toolCommand(name: string, args: string[], root: string = CODE_RO
   if (!tool) throw new AgentError("usage", `unknown tool ${JSON.stringify(name)}`, [`one of: ${Object.keys(TOOL_MAP).join(", ")}`]);
   const bundled = join(root, "dist", "tools.js");
   if (existsSync(bundled)) return [process.execPath, bundled, name, ...args];
-  const source = join(root, tool.source);
-  if (existsSync(source)) return [process.execPath, source, ...(tool.prefix ?? []), ...args];
+  // In a checkout, go through the same entry the bundle uses so both report
+  // errors identically.
+  const entry = join(root, "scripts", "plugin", "tools-entry.ts");
+  if (existsSync(entry) && existsSync(join(root, tool.source))) return [process.execPath, entry, name, ...args];
   throw new AgentError("unavailable", `tool '${name}' is not present in ${root}`, ["reinstall the plugin, or run from a checkout"]);
 }
 

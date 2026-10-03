@@ -261,3 +261,23 @@ describe("agent alias", () => {
     expect(JSON.parse(proc.stdout.toString()).name).toBe("jobsearch");
   });
 });
+
+// jobsearch-plugin#16: an unsupported flag on a delegated tool escaped as a raw
+// Bun TypeError and stack trace instead of the JSON error tools document.
+describe("delegated tool argument errors", () => {
+  test("an unsupported flag is a JSON BAD_ARGS error with exit 2", async () => {
+    const { code, stdout, stderr } = await js(["run", "profile:check", "--profile", "nonexistent-profile.json"]);
+    expect(code).toBe(2);
+    expect(stdout).toBe("");
+    const err = JSON.parse(stderr.trim());
+    expect(err).toMatchObject({ code: "BAD_ARGS" });
+    expect(err.error).toContain("--profile");
+    expect(stderr).not.toContain("TypeError");
+  });
+
+  test("supported flags still work", async () => {
+    const { code, stdout } = await js(["run", "profile:check", "--help"]);
+    expect(code).toBe(0);
+    expect(stdout).toContain("--check");
+  });
+});

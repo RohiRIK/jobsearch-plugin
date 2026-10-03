@@ -45,5 +45,26 @@ if (import.meta.main) {
   process.argv.splice(2, process.argv.length, ...argv);
   Bun.argv.splice(2, Bun.argv.length, ...argv);
   const mod = await LOADERS[tool.source]();
-  process.exit(await mod.main());
+  process.exit(await runMain(name, mod.main));
+}
+
+/**
+ * A rejected flag is a usage error, reported as the JSON error every tool
+ * documents, not as an uncaught Bun stack trace (jobsearch-plugin#16).
+ */
+export async function runMain(name: string, main: Main): Promise<number> {
+  try {
+    return await main();
+  } catch (err) {
+    const code = (err as { code?: unknown })?.code;
+    if (typeof code === "string" && code.startsWith("ERR_PARSE_ARGS")) {
+      process.stderr.write(JSON.stringify({
+        error: `${name}: ${(err as Error).message}`,
+        code: "BAD_ARGS",
+        hint: `run \`jobsearch run ${name} --help\` for the supported flags`,
+      }) + "\n");
+      return 2;
+    }
+    throw err;
+  }
 }

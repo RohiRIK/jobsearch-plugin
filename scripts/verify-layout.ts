@@ -212,7 +212,7 @@ async function analyzePage(path: string, { createCanvas, loadImage }: Canvas): P
  * a physical edge safety band. This fails closed for PDF-only/LaTeX documents
  * because this Snap Bun runtime cannot execute host PDF rasterizers reliably.
  */
-export const NON_FINAL_PAGE_SLACK = 0.15;
+export const NON_FINAL_PAGE_SLACK = 0.17;
 
 export async function checkLayout(pdfPath: string, sourcePath?: string): Promise<LayoutReport> {
   if (!existsSync(pdfPath)) return failure(`PDF missing: ${pdfPath}`);
@@ -251,8 +251,9 @@ export async function checkLayout(pdfPath: string, sourcePath?: string): Promise
     // legitimately end early; a mostly empty final page reads as an unfinished
     // document even though every glyph is safely inside the margins.
     // A non-final page may end early by the smallest unit that cannot split:
-    // a section heading, an entry title and a three-line paragraph (Typst will
-    // not leave one line of it alone). That unit is up to ~14% of a page.
+    // a section heading, an entry title with its spacing and a three-line
+    // paragraph (Typst will not leave one line of it alone). Measured across
+    // all ten layouts, that unit is up to 16% of a page.
     for (const report of reports.slice(0, -1)) {
       report.underfilled = report.trailingWhitespaceRatio > NON_FINAL_PAGE_SLACK;
     }

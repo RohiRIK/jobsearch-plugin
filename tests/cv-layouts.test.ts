@@ -205,3 +205,76 @@ describe("page fill before the last page", () => {
     expect(early).toEqual([]);
   }, 300_000);
 });
+
+// jobsearch-plugin#15: splitting the project block also tightened its spacing,
+// so identical content came out shorter and an executive CV that passed
+// final-page density in 2.3.0 failed in 2.4.0. Render the same content with the
+// 2.3.0 single-block project code and with the current code, and compare where
+// the next section starts.
+const SINGLE_BLOCK_PROJECTS = `    let projects-section = {
+      for (i, project) in projects.enumerate() {
+        block(breakable: false, above: if i == 0 { gap-section } else { 1.2em })[
+          #if i == 0 { section("Projects") }
+          #text(weight: "bold", size: size-entry)[#project.title]
+          #if project.url != "" [
+            #h(5pt)
+            #text(size: size-meta, fill: accent)[#link(project.url)[Project link]]
+          ]
+          #if project.description != "" [
+            #v(2pt)
+            #text(size: size-body)[#project.description]
+          ]
+          #if project.highlights.len() > 0 [
+            #v(2pt)
+            #for highlight in project.highlights [
+              #grid(
+                columns: (8pt, 1fr),
+                gutter: 2pt,
+                text(size: size-body)[#bullet],
+                text(size: size-body)[#highlight],
+              )
+              #v(1pt)
+            ]
+          ]
+        ]
+        v(gap-entry)
+      }
+    }
+`;
+
+describe("project spacing", () => {
+  test.skipIf(!HAS_PDFTOTEXT)("splitting the project block keeps the 2.3.0 vertical rhythm", async () => {
+    const templateDir = join(ROOT, "templates", "cv", "modern");
+    const current = readFileSync(join(templateDir, "template.typ"), "utf-8");
+    const start = current.indexOf("    let projects-section = {");
+    const end = current.indexOf("    let education-section = {");
+    expect(start).toBeGreaterThan(0);
+    const reference = join(templateDir, `.template-single-block-${process.pid}.typ`);
+    writeFileSync(reference, current.slice(0, start) + SINGLE_BLOCK_PROJECTS + "\n" + current.slice(end));
+    try {
+      const educationTop = async (template: string, layout: string) => {
+        const source = join(dir, `rhythm-${layout}-${template.includes("single") ? "ref" : "cur"}.typ`);
+        writeFileSync(source, `#import "${relative(dir, template)}": cv-body
+#show: cv-body(name: "Jane", lastname: "Doe", contact: ("jane@example.com",), languages: ("English",), headline: "Engineer", profile: "Short profile.",
+  skills: ((label: "Identity", value: "Entra ID"),),
+  experience: ((date: "2022", title: "Engineer", company: "Example", location: "Remote", content: ("Bullet one.", "Bullet two.")),),
+  projects: ${"(" + ["One", "Two", "Three"].map((t) => `(title: "Project ${t}", url: "", description: "Planned a directory migration to Microsoft Entra and configured Conditional Access and Intune compliance for the client.", highlights: ("First bounded contribution.", "Second bounded contribution."))`).join(", ") + ")"},
+  education: ((year: "2022", degree: "Cyber", institution: "College", field: ""),), certifications: ((name: "MS-900", date: "2022"),), layout: "${layout}")
+`);
+        const pdf = source.replace(/\.typ$/, ".pdf");
+        await typst(["compile", "--root", ROOT, source, pdf]);
+        const bbox = Bun.spawnSync([resolveBin("pdftotext")!, "-bbox", pdf, "-"]).stdout.toString();
+        const match = bbox.match(/yMin="([0-9.]+)"[^>]*>Education</i);
+        expect(match).not.toBeNull();
+        return Number(match![1]);
+      };
+      for (const { id: layout } of CV_LAYOUTS) {
+        const drift = Math.abs((await educationTop(join(templateDir, "template.typ"), layout)) - (await educationTop(reference, layout)));
+        // A constant 1pt at the section end remains; the per-project rhythm is identical.
+        expect(drift, layout).toBeLessThan(1.5);
+      }
+    } finally {
+      rmSync(reference, { force: true });
+    }
+  }, 120_000);
+});

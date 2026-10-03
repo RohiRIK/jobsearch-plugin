@@ -83,6 +83,14 @@ describe("installed outside the checkout", () => {
     expect(out.data.paths.cv).toContain("Acme");
   });
 
+  test("a bundled tool reports an unsupported flag as JSON, not a stack trace", () => {
+    const proc = Bun.spawnSync([join(plugin, "scripts", "jobsearch"), "run", "profile:check", "--profile", "x.json"], {
+      env: { ...process.env, JOB_SEARCH_HOME: home, JOB_SEARCH_PLUGIN_ROOT: "" },
+    });
+    expect(proc.exitCode).toBe(2);
+    expect(JSON.parse(proc.stderr.toString().trim()).code).toBe("BAD_ARGS");
+  });
+
   test("missing templates are a loud 'unavailable' error, never a silent null", () => {
     const broken = join(dir, "broken");
     cpSync(plugin, broken, { recursive: true });

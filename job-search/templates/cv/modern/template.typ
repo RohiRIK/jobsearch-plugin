@@ -184,7 +184,10 @@
         // Only the heading and title row are unbreakable, sticky to the
         // description. A whole project in one unbreakable block jumped to the
         // next page and left 15-19% of the previous page empty (owner E2E run).
-        block(breakable: false, sticky: true, above: if i == 0 { gap-section } else { 1.2em }, below: 4pt)[
+        // The spacing reproduces that single block's to within a point
+        // (tests/cv-layouts.test.ts compares them): tighter spacing made the
+        // same content shorter and failed final-page density (jobsearch-plugin#15).
+        block(breakable: false, sticky: true, above: if i == 0 { gap-section } else { 1.2em }, below: 1.2 * size-body + 2.6pt)[
           #if i == 0 { section("Projects") }
           #text(weight: "bold", size: size-entry)[#project.title]
           #if project.url != "" [
@@ -193,10 +196,10 @@
           ]
         ]
         if project.description != "" {
-          block(above: 0pt, below: 4pt, text(size: size-body)[#project.description])
+          block(above: 0pt, below: 1.2 * size-body + 2pt, text(size: size-body)[#project.description])
         }
         for highlight in project.highlights {
-          block(breakable: false, above: 0pt, below: 3pt, grid(
+          block(breakable: false, above: 0pt, below: 1.2em + 1pt, grid(
             columns: (8pt, 1fr),
             gutter: 2pt,
             text(size: size-body)[#bullet],

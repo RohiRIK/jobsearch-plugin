@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.4.1 - 2026-10-03
+
+### Fixed
+- **Project spacing matches 2.3.0 again.** Splitting the project block in 2.4.0 also cut about 10pt between a project's title, description and highlights, so identical content came out about 95pt shorter. That made an executive CV that passed final-page density in 2.3.0 fail in 2.4.0. The 2.3.0 spacing is restored to within 1pt, and a paired test renders the same content with the 2.3.0 code and the current code (RohiRIK/jobsearch-plugin#15).
+- **Non-final page slack is 17%**, the measured height of the smallest unit that cannot split with that spacing: section heading, entry title and a three-line paragraph. It was 15% in 2.4.0 and 12% before (RohiRIK/jobsearch-plugin#15).
+- **An unsupported flag on a delegated tool is a JSON error.** `jobsearch run <tool>` with a flag the tool does not accept printed a Bun `TypeError` and stack trace. It now writes `{"error", "code": "BAD_ARGS", "hint"}` to stderr and exits 2, for every tool in both a checkout and an installed plugin (RohiRIK/jobsearch-plugin#16).
+
 ## 2.4.0 - 2026-10-03
 
 Findings from the owner-confirmed end-to-end run (9 cells, Typst 0.13.1).
