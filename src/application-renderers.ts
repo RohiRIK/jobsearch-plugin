@@ -65,6 +65,8 @@ export function renderCvTypst(input: {
   supportsAvatar?: boolean;
   /** Profile links to print; default every link the profile has (see PROFILE_LINKS). */
   links?: ProfileLink[];
+  /** Print profile.interests as the last line (default true when the profile has any). */
+  interests?: boolean;
 }): string {
   const { profile, draft, outDir } = input;
   const template = input.template ?? "modern";
@@ -140,6 +142,7 @@ export function renderCvTypst(input: {
   projects: ${tuple(projects)},
   education: ${tuple(education)},
   certifications: ${tuple(certifications)},
+  interests: ${tuple(input.interests === false ? [] : (profile.interests ?? []).map(quoted))},
   education-first: ${educationFirst},
   section-order: ${tuple(draft.strategy.sectionOrder.map(quoted))},
   is-rtl: false,

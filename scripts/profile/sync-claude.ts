@@ -96,7 +96,9 @@ function profileToMarkdown(profile: Profile): string {
     lines.push(`- **Remote:** ${profile.workPreferences.remote ? "accepted" : "not accepted"}`);
     lines.push(`- **Hybrid:** ${profile.workPreferences.hybrid ? "accepted" : "not accepted"}`);
     lines.push(`- **Relocation:** ${profile.workPreferences.relocation ? "considered" : "not currently considered"}`);
-    lines.push(`- **Maximum office days/week:** ${profile.workPreferences.maxOfficeDaysPerWeek}`);
+    if (profile.workPreferences.maxOfficeDaysPerWeek !== undefined) {
+      lines.push(`- **Maximum office days/week:** ${profile.workPreferences.maxOfficeDaysPerWeek}`);
+    }
     if (profile.workPreferences.workAuthorization) {
       lines.push(`- **Work authorization:** ${profile.workPreferences.workAuthorization.eu ?? "see data/profile.json"}`);
     }

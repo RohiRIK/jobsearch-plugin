@@ -266,3 +266,29 @@ describe("application Typst renderers", () => {
     expect(cover).not.toContain("measurable outcomes");
   });
 });
+
+// Owner E2E run (2026-10-02): client cases with no confirmed employer were
+// written as bullets under the current role, which says they were done there.
+describe("employer attribution", () => {
+  const withProjectBullet = () => {
+    const draft = validApplicationDraft();
+    draft.cv.experience[0].bullets.push({ text: "Built a reusable deployment pipeline for platform teams.", evidenceIds: ["profile:project:delivery-pipeline"] });
+    return draft;
+  };
+
+  test("a project with no confirmed employer cannot be a bullet under a role", () => {
+    const brief = buildApplicationBrief({ profile: applicationProfile, posting: applicationPosting, company: "Acme", role: "Platform Engineer" });
+    expect(brief.evidence.find((item) => item.id === "profile:project:delivery-pipeline")?.text).toContain("Employer: not confirmed");
+    const findings = reviewApplicationDraft(withProjectBullet(), brief).findings;
+    expect(findings.find((f) => f.code === "EMPLOYER_UNCONFIRMED")?.path).toBe("cv.experience.0.bullets.2");
+  });
+
+  test("a project linked to the role by engagementId may be", () => {
+    const profile = structuredClone(applicationProfile);
+    profile.experience![0].id = "labs";
+    profile.projects![0].engagementId = "labs";
+    const brief = buildApplicationBrief({ profile, posting: applicationPosting, company: "Acme", role: "Platform Engineer" });
+    expect(brief.evidence.find((item) => item.id === "profile:project:delivery-pipeline")?.text).toContain("Employer: Example Labs");
+    expect(reviewApplicationDraft(withProjectBullet(), brief).findings.map((f) => f.code)).not.toContain("EMPLOYER_UNCONFIRMED");
+  });
+});

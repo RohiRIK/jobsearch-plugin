@@ -50,7 +50,7 @@ describe("visual layout integrity", () => {
       // separately reject a page that is technically safe and visually empty.
       const density = gate.gates.find((entry) => entry.gate === "layout:density");
       expect(density?.pass).toBe(false);
-      expect(density?.detail).toContain("underfilled final page");
+      expect(density?.detail).toMatch(/^final page page-1\.png is \d+% empty$/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

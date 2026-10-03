@@ -37,6 +37,7 @@ OPTIONS
   --market <code>        Force a market (de, dk, ch, ie...); detected from the posting otherwise
   --cv-template <name>   Typst CV template (default: modern)
   --links <list>         Profile links on the CV: linkedin,github,blog (default: all the profile has)
+  --interests show|omit  Print the profile's interests as the CV's last line (default show)
   --fit                  After rendering, if the CV's last page is nearly empty or off budget, test the
                          other layouts and report which fit. Never switches layout.
   --layout <name>            Chosen CV layout variant (required for render)
@@ -68,6 +69,7 @@ interface CliOptions {
   layout?: string;
   date?: string;
   links?: string;
+  interests?: string;
   compile: boolean;
   fit: boolean;
   force: boolean;
@@ -86,6 +88,7 @@ interface ParsedValues {
   layout?: string;
   date?: string;
   links?: string;
+  interests?: string;
   compile: boolean;
   fit: boolean;
   force: boolean;
@@ -207,6 +210,10 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   const unknownLink = requestedLinks?.find((key) => !(key in PROFILE_LINKS));
   if (unknownLink) return error(`unknown link '${unknownLink}'`, "BAD_ARGS", { available: Object.keys(PROFILE_LINKS) });
   const links = selectedLinks(profile, requestedLinks as ProfileLink[] | undefined);
+  if (options.interests !== undefined && options.interests !== "show" && options.interests !== "omit") {
+    return error(`--interests must be show or omit, got '${options.interests}'`, "BAD_ARGS");
+  }
+  const interests = options.interests !== "omit";
 
   assertTemplate("cover", options.clTemplate);
   const namingConfig = { ...loadConfig(), name: profileDocumentName(profile.identity) };
@@ -238,7 +245,7 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   const photo = options.cvTemplate === "modern" && layoutOption.supportsAvatar && existsSync(photoPath) ? photoPath : undefined;
   writeFileSync(
     cvPath,
-    renderCvTypst({ profile, draft, outDir: dirname(cvPath), template: options.cvTemplate, market: brief.market, photo, layout, supportsAvatar: layoutOption.supportsAvatar, links: links.included }),
+    renderCvTypst({ profile, draft, outDir: dirname(cvPath), template: options.cvTemplate, market: brief.market, photo, layout, supportsAvatar: layoutOption.supportsAvatar, links: links.included, interests }),
   );
   writeFileSync(
     clPath,
@@ -264,7 +271,7 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
     fit = await fitReport({
       render: (id) => renderCvTypst({
         profile, draft, outDir: dirname(cvPath), template: options.cvTemplate, market: brief.market, photo, layout: id,
-        supportsAvatar: CV_LAYOUTS.find((option) => option.id === id)?.supportsAvatar ?? false, links: links.included,
+        supportsAvatar: CV_LAYOUTS.find((option) => option.id === id)?.supportsAvatar ?? false, links: links.included, interests,
       }),
       cvPath,
       chosen: layout,
@@ -301,6 +308,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
         layout: { type: "string" },
         date: { type: "string" },
         links: { type: "string" },
+        interests: { type: "string" },
         compile: { type: "boolean", default: false },
         fit: { type: "boolean", default: false },
         force: { type: "boolean", default: false },
@@ -345,6 +353,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
     layout: values.layout,
     date: values.date,
     links: values.links,
+    interests: values.interests,
     compile: values.compile,
     fit: values.fit,
     force: values.force,

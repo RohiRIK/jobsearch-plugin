@@ -42,6 +42,18 @@ export const SKILL_ALIAS_GROUPS: readonly SkillAliasGroup[] = [
     label: "Microsoft 365",
     terms: ["microsoft 365", "m365", "office 365", "o365"],
   },
+  {
+    // A profile that says "Google Cloud Platform" made a posting's "GCP" a gap,
+    // and the gap check then rejected the abbreviation (owner E2E run).
+    key: "google-cloud",
+    label: "Google Cloud Platform",
+    terms: ["gcp", "google cloud platform", "google cloud"],
+  },
+  {
+    key: "aws",
+    label: "AWS",
+    terms: ["aws", "amazon web services"],
+  },
 ] as const;
 
 export type SkillMatchType = "exact" | "alias";

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.4.0 - 2026-10-03
+
+Findings from the owner-confirmed end-to-end run (9 cells, Typst 0.13.1).
+
+### Fixed
+- **Page 1 no longer ends early before a project.** A project was one unbreakable block (title, description and every highlight), so it jumped to page 2 and left 15-19% of page 1 empty. That failed `layout:density` on 6 of 9 cells, across all layouts. Only the heading and title are now kept with the description; highlights break normally. A non-final page may end up to 15% early, the size of the smallest unit that cannot split.
+- **`layout:density` says which page and why.** "underfilled final page" was printed for page 1 too. A page that ends early now reports that a block moved to the next page, with a layout hint instead of advice to change the content.
+- **ATS section order reads headings, not prose.** The word "experience" in the summary was taken for the Experience heading and failed a correctly ordered CV. Headings must now be a line of their own. The CV is checked against the order its source declares, so a custom `sectionOrder` and the `project-first` layout no longer fail.
+- **GCP and AWS match their long names.** A profile with "Google Cloud Platform" left a posting's "GCP" as a gap, and review then rejected the abbreviation.
+
+### Added
+- **`EMPLOYER_UNCONFIRMED` review error.** A project may appear as a bullet under a role only when its `engagementId` names that role. Client cases with no confirmed employer were rendered under the current employer. Project evidence now states "Employer: ..." or "Employer: not confirmed".
+- **`interests` in the profile**, printed as the CV's last line; `render --interests omit` leaves them out.
+- **`profile:check` warnings** for project domains the matcher does not know (such a project is never selected) and for an `engagementId` that matches no role.
+
+### Changed
+- `workPreferences.maxOfficeDaysPerWeek` is optional, so work authorization can be recorded first. An explicit on-site office-day count then goes to `review`.
+
 ## 2.3.0 - 2026-10-02
 
 ### Added

@@ -209,7 +209,7 @@ async function runRender(values: Values): Promise<CommandResult> {
     if (run.json === undefined) throw toolFailure("application", run);
     return { data: { dryRun: true, review: run.json, wouldWrite: "convention-named Typst CV + cover letter under <workspace>/assets/applications/" }, exit: EXIT.dryRun };
   }
-  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "compile", "fit", "force"])]);
+  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "interests", "compile", "fit", "force"])]);
   if (run.json !== undefined) {
     const out = run.json as { written?: boolean };
     return { data: out, exit: run.code === 0 ? EXIT.ok : EXIT.verdictFailed };
@@ -424,6 +424,7 @@ export const CORE_COMMANDS: Record<string, CommandSpec> = {
       "cl-template": { type: "string", description: "Typst cover template", default: "modern" },
       date: { type: "string", description: "Output date YYYY-MM-DD (default today)" },
       links: { type: "string", description: "Profile links on the CV, comma-separated: linkedin,github,blog (default: all the profile has)" },
+      interests: { type: "string", description: "Print the profile's interests as the CV's last line", enum: ["show", "omit"] },
       fit: { type: "boolean", description: "If the CV's last page is nearly empty or off budget, test the other layouts and report which fit (never switches)" },
       compile: { type: "boolean", description: "Compile both sources after writing" },
       force: { type: "boolean", description: "Overwrite existing convention-named sources" },

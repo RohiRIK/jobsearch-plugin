@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Profile } from "../../src/profile-schemas.js";
 import { CODE_ROOT, WORKSPACE as ROOT } from "../../src/paths.js";
+import { PROJECT_DOMAINS } from "../../src/project-matching.js";
 
 const TEMPLATE = resolve(CODE_ROOT, "data/profile.json.example");
 const DEFAULT_OUTPUT = resolve(ROOT, "data/profile.json");
@@ -35,6 +36,24 @@ function fail(error: string, code: string): number {
   return 1;
 }
 
+/**
+ * Valid but silently ineffective profile data. In the owner E2E run, free-form
+ * project domains ("identity", "sso") matched nothing, so every client case
+ * scored below relevance and never reached the evidence ledger.
+ */
+export function profileWarnings(profile: Profile): string[] {
+  const warnings: string[] = [];
+  const known = Object.keys(PROJECT_DOMAINS);
+  const roleIds = new Set((profile.experience ?? []).map((role) => role.id).filter(Boolean));
+  for (const project of profile.projects ?? []) {
+    const unknown = project.domains.filter((domain) => !known.includes(domain));
+    if (unknown.length > 0) warnings.push(`project ${project.slug}: unknown domain(s) ${unknown.join(", ")}; matching uses ${known.join(", ")}`);
+    if (project.domains.length > 0 && unknown.length === project.domains.length) warnings.push(`project ${project.slug}: no known domain, so it can never be selected for a CV`);
+    if (project.engagementId && !roleIds.has(project.engagementId)) warnings.push(`project ${project.slug}: engagementId "${project.engagementId}" matches no experience id`);
+  }
+  return warnings;
+}
+
 export async function main(argv = Bun.argv.slice(2)): Promise<number> {
   const { values } = parseArgs({
     args: argv,
@@ -57,12 +76,13 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
   if (values.check) {
     const target = resolve(process.cwd(), values.output ?? DEFAULT_OUTPUT);
     if (!existsSync(target)) return fail(`profile not found: ${target}. Run: bun run profile:scaffold`, "NO_PROFILE");
+    let checked: Profile;
     try {
-      Profile.parse(JSON.parse(readFileSync(target, "utf-8")));
+      checked = Profile.parse(JSON.parse(readFileSync(target, "utf-8")));
     } catch (cause) {
       return fail(`profile failed schema validation: ${target}`, "BAD_PROFILE");
     }
-    process.stdout.write(JSON.stringify({ valid: true, profile: target }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ valid: true, profile: target, warnings: profileWarnings(checked) }, null, 2) + "\n");
     return 0;
   }
 

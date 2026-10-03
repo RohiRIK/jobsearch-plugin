@@ -76,6 +76,17 @@ describe("scoreJob", () => {
     expect(result.eligibility.constraints.join(" ")).toContain("office-day count");
   });
 
+  // Owner E2E run: work authorization could not be recorded without an office-day limit.
+  test("work preferences without an office-day limit send an explicit on-site count to review", () => {
+    const openProfile: Profile = {
+      ...profile,
+      workPreferences: { remote: true, hybrid: true, relocation: true, workAuthorization: { eu: "EU citizen" } },
+    };
+    const result = scoreJob(summarizeText("Requirements: Docker. On-site role in Berlin, 5 days a week in the office."), openProfile);
+    expect(result.eligibility.status).toBe("review");
+    expect(result.eligibility.constraints.join(" ")).toContain("profile states no maximum");
+  });
+
   test("scores accepted hybrid and relocation cases without a deal-breaker", () => {
     const constrainedProfile: Profile = {
       ...profile,
@@ -159,6 +170,17 @@ describe("scoreJob", () => {
       profileSkill: "Entra ID",
       matchType: "alias",
     });
+  });
+
+  test("matches GCP to a profile that says Google Cloud Platform, without matching Go", () => {
+    const gcpProfile: Profile = {
+      identity: { name: "Test User" },
+      skills: [{ category: "Cloud", skills: ["Google Cloud Platform (production)"] }],
+    };
+    const result = scoreJob(summarizeText("Requirements: GCP, Go"), gcpProfile);
+    expect(result.matched).toContain("gcp");
+    expect(result.gaps).toContain("go");
+    expect(result.skillEvidence).toContainEqual({ requirement: "gcp", profileSkill: "Google Cloud Platform (production)", matchType: "alias" });
   });
 
   test("matches Microsoft 365 and M365 aliases", () => {

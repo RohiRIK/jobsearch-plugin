@@ -31,6 +31,8 @@
   projects: (),
   education: (),
   certifications: (),
+  // Owner-confirmed interests, one line at the very end; never reordered.
+  interests: (),
   education-first: false,
   // Explicit order from the application strategy: any of "summary", "experience",
   // "projects", "education", "certifications". Empty means the market default
@@ -179,30 +181,28 @@
 
     let projects-section = {
       for (i, project) in projects.enumerate() {
-        block(breakable: false, above: if i == 0 { gap-section } else { 1.2em })[
+        // Only the heading and title row are unbreakable, sticky to the
+        // description. A whole project in one unbreakable block jumped to the
+        // next page and left 15-19% of the previous page empty (owner E2E run).
+        block(breakable: false, sticky: true, above: if i == 0 { gap-section } else { 1.2em }, below: 4pt)[
           #if i == 0 { section("Projects") }
           #text(weight: "bold", size: size-entry)[#project.title]
           #if project.url != "" [
             #h(5pt)
             #text(size: size-meta, fill: accent)[#link(project.url)[Project link]]
           ]
-          #if project.description != "" [
-            #v(2pt)
-            #text(size: size-body)[#project.description]
-          ]
-          #if project.highlights.len() > 0 [
-            #v(2pt)
-            #for highlight in project.highlights [
-              #grid(
-                columns: (8pt, 1fr),
-                gutter: 2pt,
-                text(size: size-body)[#bullet],
-                text(size: size-body)[#highlight],
-              )
-              #v(1pt)
-            ]
-          ]
         ]
+        if project.description != "" {
+          block(above: 0pt, below: 4pt, text(size: size-body)[#project.description])
+        }
+        for highlight in project.highlights {
+          block(breakable: false, above: 0pt, below: 3pt, grid(
+            columns: (8pt, 1fr),
+            gutter: 2pt,
+            text(size: size-body)[#bullet],
+            text(size: size-body)[#highlight],
+          ))
+        }
         v(gap-entry)
       }
     }
@@ -265,6 +265,12 @@
       if name not in order { order.push(name) }
     }
     for name in order { sections.at(name) }
+    if interests.len() > 0 {
+      block(breakable: false, above: gap-section, {
+        section("Interests")
+        text(size: size-body)[#interests.join(", ")]
+      })
+    }
 
     it
   }

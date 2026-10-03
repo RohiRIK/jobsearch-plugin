@@ -48,3 +48,31 @@ describe("ATS quality checks", () => {
     expect(checks.find((check) => check.name === "Sufficient content")?.pass).toBe(false);
   });
 });
+
+// Owner E2E run (2026-10-02): the word "experience" in the summary was read as
+// the Experience heading, failing a correctly ordered CV.
+describe("CV section order reads headings, not prose", () => {
+  const order = (text: string, expected?: string[]) =>
+    checkAtsQuality(text, true, expected).find((check) => check.name === "CV section order");
+
+  test("a heading word inside body prose is not a heading", () => {
+    const cv = `${contact}\nProfile\nEngineer with experience in identity and education in security.\nSkills\nAzure\nExperience\nEngineer\nEducation\nBSc`;
+    expect(order(cv)?.pass).toBe(true);
+  });
+
+  test("a genuinely interleaved extraction still fails", () => {
+    expect(order(`${contact}\nExperience\nEngineer\nProfile\nBuilder with experience`)?.pass).toBe(false);
+  });
+
+  test("a CV is checked against the order its source declares", () => {
+    const reversed = `${contact}\nCertifications\nMS-900\nEducation\nBSc\nExperience\nEngineer\nProfile\nBuilder`;
+    expect(order(reversed)?.pass).toBe(false);
+    expect(order(reversed, ["Certifications", "Education", "Projects", "Experience", "Profile", "Skills"])?.pass).toBe(true);
+    // Declared order does not excuse an extraction that contradicts it.
+    expect(order(reversed, ["Profile", "Skills", "Experience", "Projects", "Education", "Certifications"])?.pass).toBe(false);
+  });
+
+  test("project-first passes without a declared order", () => {
+    expect(order(`${contact}\nProfile\nBuilder\nSkills\nAzure\nProjects\nA tool\nExperience\nEngineer\nEducation\nBSc`)?.pass).toBe(true);
+  });
+});

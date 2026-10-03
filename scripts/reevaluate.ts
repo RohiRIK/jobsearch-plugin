@@ -9,7 +9,8 @@ import { checkLayout } from "./verify-layout.js";
 import { getMarketProfile } from "../src/market-profiles.js";
 import { documentNameSlug, profileDocumentName } from "../src/naming.js";
 import { Profile } from "../src/profile-schemas.js";
-import { WORKSPACE as ROOT } from "../src/paths.js";
+import { CODE_ROOT, WORKSPACE as ROOT, typstRoot } from "../src/paths.js";
+import { resolveTypstCommand } from "../src/resolve-bin.js";
 import { CV_LAYOUTS } from "../src/cv-options.js";
 
 const PAGE_EXPECTATIONS = { cv: [1, 2] as const, cl: [1, 1] as const };
@@ -47,6 +48,24 @@ function sameUrl(a: string, b: string): boolean {
  * An underfilled last CV page is usually a few lines spilling over. Name the
  * concrete moves, densest first, and the one thing never to do (issue #7).
  */
+/**
+ * The section order a Typst CV declares, read from its <cv-section> labels.
+ * `typst query` works on every supported Typst version. Undefined when it
+ * cannot run; the ATS check then falls back to the market conventions.
+ */
+export function declaredSectionOrder(sourcePath: string): string[] | undefined {
+  const typst = resolveTypstCommand(CODE_ROOT);
+  if (!typst) return undefined;
+  const proc = Bun.spawnSync([...typst, "query", "--root", typstRoot(), sourcePath, "<cv-section>", "--field", "value"], { stdout: "pipe", stderr: "pipe" });
+  if (proc.exitCode !== 0) return undefined;
+  try {
+    const titles = JSON.parse(proc.stdout.toString());
+    return Array.isArray(titles) ? titles.map(String) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function densityHint(expected: readonly [number, number], pages: number | null): string {
   const denser = CV_LAYOUTS.filter((option) => option.density === "compact").map((option) => option.id);
   const fewer = pages !== null && pages > expected[0] ? `; or tighten the draft to ${expected[0]} page(s), which this market allows` : "";
@@ -158,17 +177,29 @@ export async function reevaluateDoc(
         : "shorten or wrap the affected field; keep text inside the safe content area and rerun reevaluate",
   });
 
+  // A page before the last that ends early means a block moved to the next
+  // page; only the last page can be short for lack of content. They need
+  // different fixes, so the detail says which (owner E2E run, 2026-10-02).
+  const lastPage = layout.pages.at(-1)?.file;
+  const early = layout.pages.filter((page) => page.underfilled && page.file !== lastPage);
+  const finalShort = layout.pages.filter((page) => page.underfilled && page.file === lastPage);
+  const pct = (ratio: number) => `${Math.round(ratio * 100)}%`;
   gates.push({
     gate: "layout:density",
     pass: layout.underfilledPages.length === 0,
     detail: layout.underfilledPages.length === 0
       ? `page fill is professional across ${layout.pages.length} page(s)`
-      : `underfilled final page: ${layout.underfilledPages.join(", ")}`,
+      : [
+          ...early.map((page) => `${page.file} ends early (${pct(page.trailingWhitespaceRatio)} empty): a block that cannot split moved to the next page`),
+          ...finalShort.map((page) => `final page ${page.file} is ${pct(page.trailingWhitespaceRatio)} empty`),
+        ].join("; "),
     hint: layout.underfilledPages.length === 0
       ? undefined
-      : docType === "cv"
-        ? densityHint(expected, pages)
-        : "the letter's page is underfilled: add a verified, role-specific paragraph; do not pad",
+      : early.length > 0
+        ? "an unbreakable block was pushed to the next page; this is a layout limit, not a content problem. `jobsearch render … --fit` reports layouts that fit; do not cut true facts to pass"
+        : docType === "cv"
+          ? densityHint(expected, pages)
+          : "the letter's page is underfilled: add a verified, role-specific paragraph; do not pad",
   });
 
   const text = existsSync(pdfPath) ? await extractText(pdfPath) : null;
@@ -182,7 +213,8 @@ export async function reevaluateDoc(
       hint: "install Poppler (brew install poppler / apt install poppler-utils), or use --allow-missing-ats only for a non-shipping local check",
     });
   } else {
-    for (const check of checkAtsQuality(text, docType === "cv")) {
+    const declared = docType === "cv" && existsSync(sourcePath) && sourcePath.endsWith(".typ") ? declaredSectionOrder(sourcePath) : undefined;
+    for (const check of checkAtsQuality(text, docType === "cv", declared)) {
       gates.push({
         gate: `ats:${check.name}`,
         pass: check.pass,

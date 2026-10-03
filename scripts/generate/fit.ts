@@ -87,7 +87,7 @@ export async function fitReport(input: {
     : !chosenTrial.withinBudget
       ? `${input.chosen} runs to ${chosenTrial.pages} page(s), outside the ${input.budget.join("-")} page budget`
       : chosenTrial.underfilled
-        ? `${input.chosen} leaves the last page nearly empty`
+        ? `${input.chosen} leaves a page underfilled`
         : `${input.chosen} has a layout defect`;
   const fitting = alternatives.filter((t) => t.fits);
   const suggestion = fitting.length

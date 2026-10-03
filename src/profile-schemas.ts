@@ -110,6 +110,8 @@ export const Profile = z.object({
   /** Tools adjacent to established capabilities; never default CV or fit evidence. */
   adjacentSkills: z.array(SkillCategory).optional(),
   projects: z.array(PortfolioProject).optional(),
+  /** Owner-confirmed personal interests, printed verbatim as the CV's last line. */
+  interests: z.array(z.string().min(1)).optional(),
   certifications: z
     .array(
       z.object({
@@ -165,7 +167,8 @@ export const Profile = z.object({
       remote: z.boolean(),
       hybrid: z.boolean(),
       relocation: z.boolean(),
-      maxOfficeDaysPerWeek: z.number().int().min(0).max(7),
+      /** Optional: work authorization can be recorded before the owner states an office-day limit. */
+      maxOfficeDaysPerWeek: z.number().int().min(0).max(7).optional(),
       /** Confirmed work-authorization facts (e.g. EU citizenship). Free-form; rendered by sync-claude. */
       workAuthorization: z
         .object({

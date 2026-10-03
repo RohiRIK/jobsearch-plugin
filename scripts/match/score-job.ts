@@ -128,6 +128,9 @@ export function scoreJob(jd: ParsedJD, profile: Profile): MatchResult {
     if (jd.officeDaysPerWeek === null) {
       eligibility.status = "review";
       eligibility.constraints.push("work arrangement: on-site role without an explicit office-day count");
+    } else if (preferences.maxOfficeDaysPerWeek === undefined) {
+      eligibility.status = "review";
+      eligibility.constraints.push(`work arrangement: JD requires ${jd.officeDaysPerWeek} office days/week; profile states no maximum`);
     } else if (jd.officeDaysPerWeek > preferences.maxOfficeDaysPerWeek) {
       eligibility.status = "ineligible";
       eligibility.constraints.push(

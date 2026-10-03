@@ -66,7 +66,9 @@ jobsearch run profile:scaffold
 `profile:scaffold` refuses to overwrite an existing profile unless `--force` is
 explicitly requested. The agent must not use `--force` without the user's
 explicit approval. Replace every placeholder with verified facts, then run
-`jobsearch run profile:check` to validate the shape before continuing.
+`jobsearch run profile:check` to validate the shape before continuing. Resolve its
+`warnings` too: a project domain the matcher does not know means that project is
+never selected, and an `engagementId` must equal the owning role's experience `id`.
 
 Interactive, when the user is present:
 

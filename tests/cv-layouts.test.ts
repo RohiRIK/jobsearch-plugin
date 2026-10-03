@@ -5,6 +5,7 @@ import { join, relative, resolve } from "node:path";
 import { renderCvTypst } from "../src/application-renderers.js";
 import { CV_LAYOUTS } from "../src/cv-options.js";
 import { resolveBin, resolveTypstCommand } from "../src/resolve-bin.js";
+import { checkLayout } from "../scripts/verify-layout.js";
 import { applicationProfile, validApplicationDraft } from "./fixtures/application.js";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -107,6 +108,17 @@ describe("section order", () => {
   }, 60_000);
 });
 
+describe("interests", () => {
+  test("profile interests print as the last section, and can be omitted", async () => {
+    const profile = structuredClone(applicationProfile);
+    profile.interests = ["Trail running", "Home lab"];
+    writeFileSync(join(dir, "interests.typ"), renderCvTypst({ profile, draft: draftWithProject(), outDir: dir }));
+    expect((await sectionOrder(join(dir, "interests.typ"))).at(-1)).toBe("Interests");
+    const omitted = renderCvTypst({ profile, draft: draftWithProject(), outDir: dir, interests: false });
+    expect(omitted).not.toContain("Trail running");
+  }, 60_000);
+});
+
 describe("education", () => {
   test("a field that repeats the degree is not printed again as a bullet", () => {
     const profile = structuredClone(applicationProfile);
@@ -158,4 +170,38 @@ describe("density hint", () => {
     expect(densityHint([2, 2], 2)).not.toContain("tighten the draft");
     expect(hint).toContain("never drop a true fact");
   });
+});
+
+// Owner E2E run (2026-10-02): a project rendered as one unbreakable block jumped
+// to page 2 and left 15-19% of page 1 empty, failing layout:density on 6 of 9
+// cells. Sweep the experience length so a project starts at every point near
+// the foot of page 1.
+describe("page fill before the last page", () => {
+  test("no page but the last ends early, whatever the content length", async () => {
+    const desc = "Planned a directory migration to Microsoft Entra, built automation to migrate users, configured Conditional Access and Intune compliance, encryption and Platform SSO, configured SSO for the client's SaaS applications, and ran the test end to end.";
+    const project = (title: string, n: number) =>
+      `(title: "${title}", url: "", description: "${desc}", highlights: (${Array.from({ length: n }, (_, i) => `"Highlight ${i} describing a bounded contribution."`).join(", ")}${n === 1 ? "," : ""}))`;
+    const early: string[] = [];
+    for (const layout of ["minimal", "technical", "executive"]) for (let n = 0; n < 10; n++) {
+      const bullets = Array.from({ length: 5 + n }, (_, i) => `"Bullet ${i}: designed security controls including device policy, Conditional Access rules and data protection configuration."`).join(", ");
+      const source = join(dir, `fill-${layout}-${n}.typ`);
+      writeFileSync(source, `#import "${relative(dir, join(ROOT, "templates", "cv", "modern", "template.typ"))}": cv-body
+#show: cv-body(
+  name: "Jane", lastname: "Doe", contact: ("jane@example.com",), languages: ("English",),
+  headline: "Cloud Security Engineer", profile: "Engineer working across identity, security controls and workflow automation, migrating directories and removing manual steps from security operations.",
+  skills: ((label: "Identity", value: "Entra ID, Conditional Access, Intune"), (label: "Automation", value: "PowerShell, Python")),
+  experience: ((date: "2022 - Present", title: "Cloud Security Engineer", company: "Example", location: "Remote", content: (${bullets})),),
+  projects: (${project("Directory migration", 2)}, ${project("MFA pilot", 2)}, ${project("Lifecycle automation", 1)}),
+  education: ((year: "2022", degree: "Cyber Security", institution: "College", field: ""),),
+  certifications: ((name: "MS-900", date: "2022"),),
+  layout: "${layout}",
+)
+`);
+      await typst(["compile", "--root", ROOT, source, source.replace(/\.typ$/, ".pdf")]);
+      const report = await checkLayout(source.replace(/\.typ$/, ".pdf"), source);
+      if (report.unavailable) return;
+      for (const page of report.pages.slice(0, -1)) if (page.underfilled) early.push(`${layout} n=${n}: ${page.file} ${page.trailingWhitespaceRatio.toFixed(2)}`);
+    }
+    expect(early).toEqual([]);
+  }, 300_000);
 });

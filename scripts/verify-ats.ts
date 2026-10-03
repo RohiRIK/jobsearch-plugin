@@ -69,7 +69,12 @@ export interface AtsCheck {
   detail?: string;
 }
 
-export function checkAtsQuality(text: string, isCv: boolean): AtsCheck[] {
+/**
+ * `expectedOrder` is the section order the source declares (read from its
+ * <cv-section> labels). With it, a reordered or project-first CV is checked
+ * against what was meant; without it, against the two market conventions.
+ */
+export function checkAtsQuality(text: string, isCv: boolean, expectedOrder?: readonly string[]): AtsCheck[] {
   const checks: AtsCheck[] = [];
 
   // 1. No (cid:*) markers
@@ -121,13 +126,12 @@ export function checkAtsQuality(text: string, isCv: boolean): AtsCheck[] {
   // survived extraction. This catches common multi-column interleaving while
   // avoiding a false "reading order passed" claim when headings are absent.
   if (isCv) {
-    const normalized = text.toLowerCase();
-    const found = CV_HEADINGS.map((heading) => ({ heading, position: normalized.indexOf(heading) }))
-      .filter((item) => item.position >= 0)
-      .sort((a, b) => a.position - b.position)
-      .map((item) => item.heading);
+    const found = extractedHeadings(text);
     if (found.length >= 2) {
-      const ordered = CANONICAL_SECTION_ORDERS.some((canonical) => isSubsequence(found, canonical));
+      const expected = expectedOrder?.map((heading) => heading.toLowerCase()).filter((heading) => CV_HEADINGS.includes(heading));
+      const ordered = expected && expected.length >= 2
+        ? isSubsequence(found, expected)
+        : CANONICAL_SECTION_ORDERS.some((canonical) => isSubsequence(found, canonical));
       checks.push({
         name: "CV section order",
         pass: ordered,
@@ -158,9 +162,25 @@ export function checkAtsQuality(text: string, isCv: boolean): AtsCheck[] {
 const CANONICAL_SECTION_ORDERS = [
   ["profile", "skills", "experience", "projects", "education", "certifications"],
   ["profile", "skills", "education", "certifications", "experience", "projects"],
+  ["profile", "skills", "projects", "experience", "education", "certifications"],
 ] as const;
 
 const CV_HEADINGS = ["profile", "skills", "experience", "projects", "education", "certifications"];
+
+/**
+ * Section headings in extraction order. A heading is a line that is nothing but
+ * the heading word: matching anywhere in the text read "experience" in summary
+ * prose as the Experience heading and failed a correctly ordered CV (owner E2E
+ * run, 2026-10-02).
+ */
+export function extractedHeadings(text: string): string[] {
+  const found: string[] = [];
+  for (const line of text.split("\n")) {
+    const word = line.trim().toLowerCase().replace(/[:.]$/, "");
+    if (CV_HEADINGS.includes(word) && !found.includes(word)) found.push(word);
+  }
+  return found;
+}
 
 function isSubsequence(found: string[], canonical: readonly string[]): boolean {
   let index = 0;

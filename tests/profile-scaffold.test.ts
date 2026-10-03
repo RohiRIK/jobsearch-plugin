@@ -50,3 +50,21 @@ describe("profile scaffold", () => {
     }
   });
 });
+
+describe("profile:check warnings", () => {
+  test("names project domains the matcher does not know, and unlinked engagements", async () => {
+    const { profileWarnings } = await import("../scripts/profile/scaffold.js");
+    const warnings = profileWarnings({
+      identity: { name: "Test" },
+      experience: [{ id: "acme", title: "Engineer", company: "Acme", startDate: "2022" }],
+      projects: [
+        { slug: "sso", name: "SSO", kind: "work", summary: "x", domains: ["identity", "sso"], stack: [], engagementId: "elsewhere" },
+        { slug: "ok", name: "OK", kind: "work", summary: "x", domains: ["identity-access"], stack: [], engagementId: "acme" },
+      ],
+    } as never);
+    expect(warnings.join("\n")).toContain("project sso: unknown domain(s) identity, sso");
+    expect(warnings.join("\n")).toContain("project sso: no known domain");
+    expect(warnings.join("\n")).toContain('engagementId "elsewhere" matches no experience id');
+    expect(warnings.filter((w) => w.startsWith("project ok"))).toEqual([]);
+  });
+});

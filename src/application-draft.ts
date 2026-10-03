@@ -12,6 +12,11 @@ export const EvidenceItem = z.object({
   source: z.enum(["profile", "job"]),
   kind: z.enum(["identity", "skill", "experience", "achievement", "education", "certification", "project", "posting"]),
   text: z.string().min(1),
+  /**
+   * Projects only: the profile.experience index that owns this work (its
+   * engagementId matches the role's id), or null when no employer is confirmed.
+   */
+  engagement: z.number().int().nullable().optional(),
 });
 export type EvidenceItem = z.infer<typeof EvidenceItem>;
 
@@ -195,13 +200,16 @@ export function buildEvidenceLedger(profile: Profile, posting: string, company: 
   const projects = (profile.projects ?? []).filter((project) => project.disclosure !== "restricted" && project.disclosure !== "unreviewed");
   for (const match of selectProjects(projects, projectRoutingContext).selected) {
     const p = match.project;
+    const owner = p.engagementId ? (profile.experience ?? []).findIndex((role) => role.id === p.engagementId) : -1;
+    const employer = owner >= 0 ? `Employer: ${profile.experience![owner].company}` : p.kind === "work" ? "Employer: not confirmed" : "";
     addEvidence(evidence, {
       id: `profile:project:${p.slug.replace(/[^a-z0-9_-]/g, "-")}`,
       source: "profile",
       kind: "project",
-      text: clean([p.name, p.summary, p.impact, p.stack.length ? `Stack: ${p.stack.join(", ")}` : "", p.link]
+      text: clean([p.name, p.summary, p.impact, p.stack.length ? `Stack: ${p.stack.join(", ")}` : "", p.link, employer]
         .filter(Boolean)
         .join(" | ")),
+      engagement: owner >= 0 ? owner : null,
     });
   }
 
@@ -321,7 +329,7 @@ Draft both documents as one JSON object matching the response contract. Treat th
 1. Treat the supplied application plan as the document's strategy. Select the strongest profile evidence named by its evidencePriorities rather than repeating the whole profile; keep its work/personal classifications and section order.
 2. Write a 40-65 word CV summary and 3-6 evidence-backed bullets per relevant role. Lead bullets with actions. Numbers must stay truthful to their evidence, but phrase them naturally: state a scale figure once (or twice at most, framed differently), then refer back with varied wording such as 'at that scale', 'the same tenant', or 'enterprise-wide' instead of repeating the same figure in every line.
 3. Write a 220-300 word cover letter in ${language}, using 3-5 paragraphs. Open with the strongest concrete match, not an application announcement. Make the motivation specific to the supplied posting without inventing company facts. Set recipient to a named person only when the posting names one; otherwise use "Hiring Team". Never put the company or role in the recipient.
-4. Include only portfolio projects present in the evidence bundle as profile:project:<slug>. They were already filtered for relevance to this posting; leave the section empty rather than adding one that does not strengthen the application.
+4. Include only portfolio projects present in the evidence bundle as profile:project:<slug>. They were already filtered for relevance to this posting; leave the section empty rather than adding one that does not strengthen the application. A project whose evidence says "Employer: not confirmed" belongs under Projects only: never cite it in a role's bullets and never say in either document that it was done at an employer.
 5. Use the recommended layout from the application context when the user wants an agent-selected template; the ranking is advisory and the human may override it with a reason.
 6. Remove filler, cliches, unsupported adjectives, subjective skill levels, em dashes, and duplicated CV prose.
 7. Return strict JSON only. Do not include markdown fences or reasoning.
@@ -555,6 +563,22 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
   for (const [index, entry] of draft.cv.experience.entries()) {
     if (!brief.evidence.some((item) => item.id === `profile:experience:${entry.sourceIndex}`)) {
       findings.push({ severity: "error", code: "UNKNOWN_EXPERIENCE", message: `No profile experience at sourceIndex ${entry.sourceIndex}.`, path: `cv.experience.${index}` });
+    }
+    // A bullet under a role says the work was done there. Project evidence may
+    // only appear under the role its engagementId names (owner E2E run: client
+    // cases with no confirmed employer were rendered under the current employer).
+    for (const [bulletIndex, bullet] of entry.bullets.entries()) {
+      for (const id of bullet.evidenceIds.filter((evidenceId) => evidenceId.startsWith("profile:project:"))) {
+        const project = brief.evidence.find((item) => item.id === id);
+        if (project && project.engagement !== entry.sourceIndex) {
+          findings.push({
+            severity: "error",
+            code: "EMPLOYER_UNCONFIRMED",
+            message: `${id} is not linked to this role (no matching engagementId), so placing it here attributes it to that employer. Move it to Projects, or set the project's engagementId once the owner confirms where it was done.`,
+            path: `cv.experience.${index}.bullets.${bulletIndex}`,
+          });
+        }
+      }
     }
   }
 
