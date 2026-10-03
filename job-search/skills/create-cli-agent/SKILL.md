@@ -136,6 +136,8 @@ Ask for **output directory**. Do not hardcode.
 - Do not retry mutating calls inside the CLI.
 - Do not put secrets on stdout.
 - `NOT FOR` human-first interactive tools — cross-link CreateCLI-Human.
+- A subcommand that is also a **harness hook** speaks the harness's protocol, not the envelope. Claude Code reads exit 2 as *block*, so hook mode must exit 1 on usage errors — including flag-parse errors raised before the handler runs — or one mistyped flag in `settings.json` refuses every tool call.
+- Test the contract on the spawned process, not only the library: parse errors, `--version`, and `--help` on a stdin-reading command fail before any handler.
 
 ## Examples
 
@@ -145,4 +147,4 @@ Ask for **output directory**. Do not hardcode.
 
 ## In this plugin
 
-Synced from RohiRIK/skills `skills/CreateCLI-Agent` at `79eaf95b96e5` by `bun run plugin:sync-skills` — edit the library, not this copy. Where this plugin differs from the library's conventions (kebab-case names, scalar `allowed-tools`, no telemetry line, the README skill table in `job-search/README.md`), `../manage/PluginConventions.md` wins. Other library skills named here (Prompting, Verify, SkillForge, CreateCLI-Human, …) are optional: use them when the host has them, otherwise follow this file alone. Never ask the user to run a command from this skill; run it yourself.
+Synced from RohiRIK/skills `skills/CreateCLI-Agent` at `bef2f1f2977c` by `bun run plugin:sync-skills` — edit the library, not this copy. Where this plugin differs from the library's conventions (kebab-case names, scalar `allowed-tools`, no telemetry line, the README skill table in `job-search/README.md`), `../manage/PluginConventions.md` wins. Other library skills named here (Prompting, Verify, SkillForge, CreateCLI-Human, …) are optional: use them when the host has them, otherwise follow this file alone. Never ask the user to run a command from this skill; run it yourself.
