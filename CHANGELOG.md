@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.4.3 - 2026-10-04
+
+- The outcome skill's `reason log` example now passes the required `--confidence`;
+  copied as written it exited 1 with `NO_CONFIDENCE`. A docs test asserts every
+  `reason log` example carries it.
+- Two tests assumed the workspace is the checkout and failed with
+  `JOB_SEARCH_HOME` set elsewhere: one passed a workspace-relative `--file`, the
+  other imported a template by an absolute path that only resolves when the Typst
+  root is the code root. The product was unaffected.
+
 ## 2.4.2 - 2026-10-04
 
 ### Fixed

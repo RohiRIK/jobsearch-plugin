@@ -124,7 +124,7 @@ describe("reevaluate accepts .tex sources", () => {
   });
 
   test("CV page gate uses the selected market budget", async () => {
-    const { stdout } = await run("scripts/reevaluate.ts", ["--file", "templates/cv/modern/template.typ", "--market", "us"]);
+    const { stdout } = await run("scripts/reevaluate.ts", ["--file", join(ROOT, "templates/cv/modern/template.typ"), "--market", "us"]);
     const pageGate = JSON.parse(stdout).documents[0].gates.find((gate: { gate: string }) => gate.gate === "pages");
     expect(pageGate.detail).toContain("exactly 1 page(s) for United States");
   });

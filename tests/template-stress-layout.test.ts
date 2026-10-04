@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { renderCoverLetterTypst, renderCvTypst } from "../src/application-renderers.js";
 import { resolveTypstCommand } from "../src/resolve-bin.js";
 import { checkLayout } from "../scripts/verify-layout.js";
@@ -50,8 +50,10 @@ function adversarialDraft() {
   return draft;
 }
 
-function bankingSource(): string {
-  return `#import "/templates/cv/banking/template.typ": cv-body
+function bankingSource(dir: string): string {
+  // Relative, as the renderer writes it: checkLayout compiles with typstRoot(),
+  // which is above the code root whenever JOB_SEARCH_HOME is elsewhere.
+  return `#import "${relative(dir, join(ROOT, "templates", "cv", "banking", "template.typ"))}": cv-body
 #show: cv-body(
   name: "Alexandria",
   lastname: "Maximiliana von Sicherheitsarchitektur",
@@ -85,7 +87,7 @@ describe("adversarial Typst template layout", () => {
           `cover-${template}`,
           renderCoverLetterTypst({ profile, draft, outDir: dir, template, date: "2026-08-23" }),
         ]),
-        ["banking-cv-direct", bankingSource()],
+        ["banking-cv-direct", bankingSource(dir)],
       ];
 
       for (const [name, sourceText] of sources) {

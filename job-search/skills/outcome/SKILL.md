@@ -65,11 +65,12 @@ it edits the file every generated document draws its claims from.
 Log a specific observation:
 
 ```bash
-jobsearch run reason log --type skill_gap --finding "<observation>"
+jobsearch run reason log --type skill_gap --finding "<observation>" --confidence medium
 ```
 
 Types: `channel_effectiveness`, `template_effectiveness`, `skill_gap`,
-`sector_fit`, `cover_letter_style`, `timing`, `general`.
+`sector_fit`, `cover_letter_style`, `timing`, `general`. `--confidence`
+(`low`, `medium`, `high`) is required.
 
 ## Pipeline health
 

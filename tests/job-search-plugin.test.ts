@@ -388,4 +388,12 @@ describe("plugin docs pass only flags the tool declares", () => {
     }
     expect(bad).toEqual([]);
   });
+
+  test("a `reason log` example carries the required --confidence", () => {
+    const missing: string[] = [];
+    for (const file of ownDocs) for (const line of readFileSync(file, "utf-8").split("\n")) {
+      if (/jobsearch run reason log /.test(line) && !line.includes("--confidence")) missing.push(`${file.slice(ROOT.length + 1)}: ${line.trim()}`);
+    }
+    expect(missing).toEqual([]);
+  });
 });
