@@ -281,3 +281,31 @@ describe("delegated tool argument errors", () => {
     expect(stdout).toContain("--check");
   });
 });
+
+// jobsearch-plugin#17: markets and summarize dropped an unknown flag and ran;
+// application rejected it but exited 1. Every tool now rejects an undeclared
+// flag before running, and usage errors exit 2.
+describe("every delegated tool rejects an unknown flag", () => {
+  test("exit 2, empty stdout, JSON BAD_ARGS on stderr", async () => {
+    const { TOOL_MAP } = await import("../src/jobsearch/toolmap.js");
+    const wrong: string[] = [];
+    for (const name of Object.keys(TOOL_MAP)) {
+      const { code, stdout, stderr } = await js(["run", name, "--bogus-flag"]);
+      let parsed: { code?: string } = {};
+      try { parsed = JSON.parse(stderr.trim()); } catch {}
+      if (code !== 2 || stdout !== "" || parsed.code !== "BAD_ARGS") wrong.push(`${name}: exit ${code}, stdout ${stdout.length}B, code ${parsed.code}`);
+    }
+    expect(wrong).toEqual([]);
+  }, 120_000);
+
+  test("a tool's own usage error exits 2 too", async () => {
+    const { code, stderr } = await js(["run", "select-template"]);
+    expect(JSON.parse(stderr.trim()).code).toBe("BAD_ARGS");
+    expect(code).toBe(2);
+  });
+
+  test("declared flags and `--flag=value` still pass", async () => {
+    expect((await js(["run", "markets", "--json"])).code).toBe(0);
+    expect((await js(["run", "markets", "detect", "--job=/nonexistent"])).stderr).not.toContain("Unknown option");
+  });
+});

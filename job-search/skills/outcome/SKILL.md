@@ -65,7 +65,7 @@ it edits the file every generated document draws its claims from.
 Log a specific observation:
 
 ```bash
-jobsearch run reason log --type skill_gap --note "<observation>"
+jobsearch run reason log --type skill_gap --finding "<observation>"
 ```
 
 Types: `channel_effectiveness`, `template_effectiveness`, `skill_gap`,

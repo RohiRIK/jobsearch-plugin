@@ -1,9 +1,9 @@
 {
-  "sourceHash": "1f6f57def268e1fdc99847cba72008df357179084ec3d434d8a0ce38507ff0b5",
+  "sourceHash": "aad1da2cd614e4e4b017c2e6ffc9bf999fe8ada6f470d13e1c99c16c399785c6",
   "bun": "1.4.2",
-  "bytes": 1059701,
+  "bytes": 1063559,
   "files": {
-    "dist/jobsearch.js": "5e5ea6cea0fd1f55a3e51dac18054e788ed7591f5272e00f0e32ba56cdd63cb6",
+    "dist/jobsearch.js": "904a6b7153948abc7e8b7b1ee14015ee41eee6da4b56443d537cded799c9c162",
     "dist/portals/alljobs.js": "c6f2f8710e448f4413e60da969658fd62d2f76fc830835a9e28b42942715b707",
     "dist/portals/arbeitnow.js": "cbfa9813e30a1947a394fee458bd2a9ec8a1823349cb013254a9a088127826cc",
     "dist/portals/drushim.js": "3ce6e3baa01070e673a19b1811df69f0de31d7483dda3aa190d42ae110150aba",
@@ -11,7 +11,7 @@
     "dist/portals/remoteok.js": "d3525081c93da84bab488b1cdd8dcdaad3a9ccbed729a3731fe7399847496e22",
     "dist/portals/remotive.js": "f6c05906d4dc5a19de79e3bba1d86e06c0bf20e6660d75b5fb324756b6149f8a",
     "dist/portals/wwr.js": "950fefea39524705dc20c0a78187c4ca11a236c52b3377acaf4c17ca60408982",
-    "dist/tools.js": "ac8954ec829fe8fd3183cdbcaafecdc05668805fb21dcc2eabd38e8e518bd491",
+    "dist/tools.js": "3b51febc6945076ad4abf5336b6019116159b71b34881f1e92bac49df3690d86",
     "templates/cover/casual/meta.json": "ad06f809d758e2fff29d281ee19519c3b4a7fd6449c27ed07c9b2d12ae53df1a",
     "templates/cover/casual/template.typ": "01d4aca866425278a64db0ac6ba91aefc978f04aa9ff5ed3c5ae92eab930c399",
     "templates/cover/classic/meta.json": "257b0e6103a81e25e6730bce21680f84ae2861a3db66d5cdbc438fb053f4854f",

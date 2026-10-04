@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.4.2 - 2026-10-04
+
+### Fixed
+- **Every delegated tool rejects an unknown flag.** In 2.4.1 only the tools that parsed their own flags strictly did. `jobsearch run markets --x` exited 0 with a normal result, and 20 of the 23 tools dropped or misreported an unknown flag. Each tool now declares its flags in the tool table, and the tools entry rejects anything else before the tool runs: `{"error","code":"BAD_ARGS","hint"}` on stderr, empty stdout, exit 2. A value that starts with `--` is passed as `--flag=value` (RohiRIK/jobsearch-plugin#17).
+- **Usage errors exit 2.** Tools that reported `BAD_ARGS` or `BAD_CMD` and exited 1 (`application`, `select-template` and others) now exit 2, as the contract documents (RohiRIK/jobsearch-plugin#17).
+- **The `outcome` skill lost observations.** It ran `reason log --note`, a flag the tool never had and silently ignored. It now passes `--finding`. A test checks that every `jobsearch run <tool> --flag` in the plugin docs is a declared flag.
+
 ## 2.4.1 - 2026-10-03
 
 ### Fixed

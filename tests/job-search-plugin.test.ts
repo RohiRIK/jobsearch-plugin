@@ -369,3 +369,23 @@ describe("skills carry the repo's hard rules", () => {
     expect(hosts.toLowerCase()).toContain("ask for a yes");
   });
 });
+
+// jobsearch-plugin#17: an undeclared flag is now rejected before a tool runs.
+// The outcome skill passed `reason log --note`, which the tool had silently
+// ignored, so the observation was lost. Every flag the docs pass must exist.
+describe("plugin docs pass only flags the tool declares", () => {
+  test("every `jobsearch run <tool> --flag` in a plugin doc is accepted", async () => {
+    const { TOOL_MAP } = await import("../src/jobsearch/toolmap.js");
+    const { unknownFlag } = await import("../scripts/plugin/tools-entry.js");
+    const bad: string[] = [];
+    for (const file of ownDocs) for (const line of readFileSync(file, "utf-8").split("\n")) {
+      for (const match of line.matchAll(/jobsearch run ([a-z:-]+)((?: [^`|]*)?)/g)) {
+        const tool = TOOL_MAP[match[1]];
+        if (!tool) continue;
+        const flag = unknownFlag(match[2].trim().split(/\s+/).filter((arg) => arg.startsWith("-")), tool.flags, tool.short);
+        if (flag) bad.push(`${file.slice(ROOT.length + 1)}: run ${match[1]} ${flag}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});

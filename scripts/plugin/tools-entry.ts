@@ -41,6 +41,15 @@ if (import.meta.main) {
     process.stderr.write(JSON.stringify({ error: `unknown tool ${JSON.stringify(name)}`, code: "BAD_ARGS", tools: Object.keys(TOOL_MAP) }) + "\n");
     process.exit(2);
   }
+  const unknown = unknownFlag(args, tool.flags, tool.short);
+  if (unknown) {
+    process.stderr.write(JSON.stringify({
+      error: `${name}: Unknown option '${unknown}'`,
+      code: "BAD_ARGS",
+      hint: `run \`jobsearch run ${name} --help\` for the supported flags`,
+    }) + "\n");
+    process.exit(2);
+  }
   const argv = [...(tool.prefix ?? []), ...args];
   process.argv.splice(2, process.argv.length, ...argv);
   Bun.argv.splice(2, Bun.argv.length, ...argv);
@@ -52,9 +61,36 @@ if (import.meta.main) {
  * A rejected flag is a usage error, reported as the JSON error every tool
  * documents, not as an uncaught Bun stack trace (jobsearch-plugin#16).
  */
+/**
+ * The first argument that is not a flag the tool declares, or null. Arguments
+ * after a bare `--` are positional. A value that happens to start with `--`
+ * must be passed as `--flag=value`.
+ */
+export function unknownFlag(args: string[], flags: readonly string[], short: readonly string[] = []): string | null {
+  for (const arg of args) {
+    if (arg === "--") return null;
+    if (arg.startsWith("--")) {
+      const flag = arg.slice(2).split("=")[0];
+      if (flag !== "help" && !flags.includes(flag)) return arg;
+    } else if (/^-[A-Za-z]$/.test(arg) && arg !== "-h" && !short.includes(arg.slice(1))) {
+      return arg;
+    }
+  }
+  return null;
+}
+
 export async function runMain(name: string, main: Main): Promise<number> {
+  // Tools report usage errors as {"code":"BAD_ARGS"|"BAD_CMD"} but most exit 1;
+  // the contract's usage exit is 2 (jobsearch-plugin#17).
+  let usage = false;
+  const write = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+    if (/"code":"(BAD_ARGS|BAD_CMD)"/.test(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))) usage = true;
+    return (write as (...a: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stderr.write;
   try {
-    return await main();
+    const code = await main();
+    return usage && code === 1 ? 2 : code;
   } catch (err) {
     const code = (err as { code?: unknown })?.code;
     if (typeof code === "string" && code.startsWith("ERR_PARSE_ARGS")) {
