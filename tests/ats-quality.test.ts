@@ -42,6 +42,11 @@ describe("ATS quality checks", () => {
     expect(checks.find((check) => check.name === "CV section order")?.pass).toBe(false);
   });
 
+  test("heading words inside prose do not override actual section headings", () => {
+    const checks = checkAtsQuality(`${contact}\nProfile\nEngineer with years of experience and skills in identity projects.\nSkills\nPython\nExperience\nEngineer\nEducation\nTraining\nCertifications\nCloud`, true);
+    expect(checks.find((check) => check.name === "CV section order")?.pass).toBe(true);
+  });
+
   test("fails unusably short extraction", () => {
     const checks = checkAtsQuality("candidate@example.com", false);
     expect(checks.find((check) => check.name === "Usable line structure")?.pass).toBe(false);

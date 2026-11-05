@@ -262,7 +262,7 @@ describe("application Typst renderers", () => {
     expect(cv).toContain("Automated cloud environment delivery");
     expect(cv).not.toContain("profile:experience");
     expect(cover).toContain("Acme needs a platform engineer");
-    expect(cover).toContain('date: "2026-07-18"');
+    expect(cover).toContain('date: "18 Jul 2026"');
     expect(cover).not.toContain("measurable outcomes");
   });
 });

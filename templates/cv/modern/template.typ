@@ -91,6 +91,7 @@
       set text(fill: body-color)
     }
 
+    show link: underline
     set par(leading: if dense { 0.45em } else if style.density == "roomy" { 0.65em } else { leading-body }, justify: false)
 
     // Header: every contact value remains literal text in reading order. The
@@ -132,8 +133,7 @@
     }
 
     // Each section's heading travels with its first item in one unbreakable
-    // block. section-title's `sticky` does the same on Typst 0.12+, but the npm
-    // `typst` fallback is 0.10, which ignores it and orphaned headings (pilot).
+    // block, including on the older npm Typst fallback.
     let summary-section = {
       if profile != "" {
         block(breakable: false, above: gap-section, {
@@ -152,13 +152,15 @@
       if skills.len() > 0 {
         let skill-row(skill) = {
           let skill-value = skill.at("value", default: clean-skill-label(skill.label))
+          // Fixed shared width aligns all rows while preserving page-break and
+          // heading-with-first-row behavior from the current template.
           grid(
-            columns: (auto, 1fr),
+            columns: (4.6cm, 1fr),
             gutter: 8pt,
-            text(size: size-meta, weight: "bold", fill: meta)[#skill.label],
-            text(size: size-body, fill: body-color)[#skill-value],
+            block(width: 100%)[#text(size: size-meta, weight: "bold", fill: meta)[#skill.label]],
+            block(width: 100%)[#text(size: size-body, fill: body-color)[#skill-value]],
           )
-          v(2pt)
+          v(8pt)
         }
         block(breakable: false, above: gap-section, { section("Skills"); skill-row(skills.at(0)) })
         for skill in skills.slice(1) { block(breakable: false, skill-row(skill)) }
