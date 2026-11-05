@@ -1,9 +1,10 @@
-import { relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import type { Profile } from "./profile-schemas.js";
 import { getMarketProfile } from "./market-profiles.js";
 import type { ApplicationDraft } from "./application-draft.js";
 import { CODE_ROOT } from "./paths.js";
+import { displayDate, displayDateRange, displaySkill } from "./document-presentation.js";
 
 
 /** Professional links a CV header can carry, with their short visible labels. */
@@ -87,8 +88,8 @@ export function renderCvTypst(input: {
   for (const skill of draft.cv.skills) {
     const evidenceId = skill.evidenceIds[0] ?? "";
     const match = /^profile:skill:(\d+):\d+$/.exec(evidenceId);
-    const category = match ? profile.skills?.[Number(match[1])]?.category ?? "Skills" : "Skills";
-    skillGroups.set(category, [...(skillGroups.get(category) ?? []), skill.text]);
+    const category = displaySkill(match ? profile.skills?.[Number(match[1])]?.category ?? "Skills" : "Skills");
+    skillGroups.set(category, [...(skillGroups.get(category) ?? []), displaySkill(skill.text)]);
   }
   const skills = [...skillGroups].map(([category, values]) =>
     `(label: ${quoted(category)}, value: ${quoted(values.join(", "))})`
@@ -96,7 +97,7 @@ export function renderCvTypst(input: {
   const experience = draft.cv.experience.map((entry) => {
     const source = profile.experience?.[entry.sourceIndex];
     if (!source) throw new Error(`No experience at sourceIndex ${entry.sourceIndex}`);
-    const date = [source.startDate, source.endDate ?? "Present"].filter(Boolean).join(" - ");
+    const date = displayDateRange(source.startDate, source.endDate);
     return `(date: ${quoted(date)}, title: ${quoted(source.title)}, company: ${quoted(source.company)}, location: ${quoted(source.location ?? "")}, content: ${tuple(entry.bullets.map((bullet) => quoted(bullet.text)), "      ")})`;
   });
   // Portfolio projects, resolved by slug so the name and link stay owned by
@@ -111,20 +112,22 @@ export function renderCvTypst(input: {
   // choice. German-speaking markets expect education before work experience.
   const educationFirst = input.market ? getMarketProfile(input.market)?.ordering === "education-first" : false;
   const education = (profile.education ?? []).map((item) => {
-    const year = [item.startYear, item.endYear].filter(Boolean).join(" - ");
-    // A field that only repeats the degree title printed as a bullet saying the
-    // same thing twice (pilot review), so it is left out.
+    const year = [item.startYear, item.endYear].filter(Boolean).join("–");
+    // Preserve current main's suppression of a repeated education field.
     const field = item.field && item.field.trim().toLowerCase() !== item.degree.trim().toLowerCase() ? item.field : "";
     return `(year: ${quoted(year)}, degree: ${quoted(item.degree)}, institution: ${quoted(item.institution)}, field: ${quoted(field)})`;
   });
   const certifications = (profile.certifications ?? []).map(
-    (item) => `(name: ${quoted(item.name)}, date: ${quoted(item.date ?? "")})`,
+    (item) => `(name: ${quoted(item.name)}, date: ${quoted(displayDate(item.date ?? ""))})`,
   );
   // The headline is a subtitle under the name; the profile block carries the
   // summary only. Concatenating both duplicated the same claim in the fixture
   // CV and read like an article introduction rather than a CV.
   const profileText = draft.cv.summary.text;
-  const photo = input.supportsAvatar && input.photo && existsSync(input.photo) ? input.photo : "";
+  // image() resolves in the imported template, not beside the generated source.
+  // OS-absolute paths are instead re-rooted by Typst and duplicate the host root.
+  const photo = input.supportsAvatar && input.photo && existsSync(input.photo)
+    ? importPath(dirname(resolve(outDir, templateImport)), resolve(input.photo)) : "";
 
   return `// Evidence-grounded application draft. Validate with: bun run application review
 #import "${typstString(templateImport)}": cv-body
@@ -173,7 +176,8 @@ export function renderCoverLetterTypst(input: {
   email: ${quoted(identity.email ?? "")},
   phone: ${quoted(identity.phone ?? "")},
   linkedin: ${quoted(identity.linkedin ?? "")},
-  date: ${quoted(input.date ?? new Date().toISOString().slice(0, 10))},
+  website: ${quoted(identity.blog ?? "")},
+  date: ${quoted(displayDate(input.date ?? new Date().toISOString().slice(0, 10)))},
   recipient: ${quoted(draft.coverLetter.recipient)},
   company: ${quoted(draft.company)},
   role: ${quoted(draft.role)},

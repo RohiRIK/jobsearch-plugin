@@ -52,6 +52,11 @@ the constraint. Preserve the score even when eligibility rules out the role.
 The maintained source-ledger and pilot selection procedure is
 `EvidenceGroundedPilot.md`; follow its steps 1–3 and 8.
 
+Before drafting, check that the saved profile and chosen assets are current.
+Follow `EvidenceGroundedPilot.md` sections 4a and 7–9 for owner-only fact checks,
+portrait intake, readable wording, live-link verification and attachment delivery.
+A saved skill label is not evidence of an employer deployment or daily use.
+
 Then work the chain below in order.
 
 ## 1. Read the market before writing anything
@@ -151,8 +156,9 @@ a tracker entry or submit.
   expects education detail" does not authorise a qualification you do not hold.
 - **Verify company claims independently** with WebFetch or WebSearch before they
   enter a document. Do not trust a reviewer agent's research unchecked.
-- **Name Claude Code explicitly** wherever the documents mention agentic coding
-  or AI tooling.
+- **Name AI tools only when supported by profile evidence.** Do not insert a
+  vendor, Claude Code, or a production-deployment claim merely because the role
+  asks for AI tooling. Ask for the candidate's actual implementation when missing.
 - **Never keyword-stuff.** Tighten a synonym to the posting's exact term where
   truthfully applicable; leave genuine gaps visible.
 - Output lands in `<workspace>/assets/applications/<Company>/<Date>/` as

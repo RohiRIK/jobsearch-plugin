@@ -9,6 +9,7 @@
   email: "",
   phone: "",
   linkedin: "",
+  website: "",
   date: "",
   recipient: "",
   company: "",
@@ -40,7 +41,8 @@
         let items = ()
         if email != "" { items.push(email) }
         if phone != "" { items.push(phone) }
-        if linkedin != "" { items.push(link(linkedin)[LinkedIn]) }
+        if linkedin != "" { items.push(link(linkedin)[#underline[LinkedIn]]) }
+        if website != "" { items.push(link(website)[#underline[Website]]) }
         text(size: size-meta, fill: meta)[#items.join([#h(6pt)•#h(6pt)])]
       }),
       align(right, {
