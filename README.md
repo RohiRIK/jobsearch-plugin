@@ -121,11 +121,13 @@ Every `jobsearch` command follows the same contract:
 | Host | Packaging | Status |
 |:--|:--|:--|
 | Claude Code | marketplace plugin: skills, commands, MCP, reviewer agent | Validated with `claude plugin validate --strict`; tested with a clean marketplace install |
-| Hermes Agent | `plugin.json` + `mcp.json` | Format checked against Hermes source; installer tested |
+| Hermes Agent | `plugin.json` + `mcp.json`, plugin name `jobsearch` | `hermes plugins validate` passes; installer tested |
 | OpenCode | skills + MCP entry in `opencode.json` | Format checked; installer tested |
-| OpenClaw | skills + MCP via its CLI | Format checked; installer tested |
+| OpenClaw | native package `@rohirik/jobsearch` (`openclaw.plugin.json`: skills + MCP), plugin id `jobsearch`; or skills + MCP via its CLI | `clawhub package validate` passes; installer tested |
 | Pi | local package (`package.json`) | Format checked; installer tested |
 | Any MCP client | `jobsearch mcp` over stdio | Covered by tests |
+
+The Claude Code id stays `job-search@rohirik`; Hermes and OpenClaw use `jobsearch`. What the plugin does on your machine (job-board fetches, shell tools, the opt-in Typst download, where data lives) is listed under [Before you install](job-search/README.md#before-you-install).
 
 "Format checked" means the files match the host's documented format and an installer test passes on a simulated home directory. A live session on that host has not been run yet. Reports from real setups are welcome.
 

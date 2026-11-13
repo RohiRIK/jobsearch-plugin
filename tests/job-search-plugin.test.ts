@@ -8,17 +8,20 @@ import { dirname, join, resolve } from "node:path";
 import { COMMANDS } from "../src/jobsearch/registry.js";
 import { TOOL_MAP } from "../src/jobsearch/toolmap.js";
 import { SYNCED } from "../scripts/plugin/sync-skills.js";
+import { PLUGIN_NAMES } from "../scripts/plugin/check.js";
 
 const read = (path: string) => readFileSync(path, "utf-8");
 const ROOT = resolve(import.meta.dir, "..");
 const PLUGIN = join(ROOT, "job-search");
 const SKILLS_DIR = join(PLUGIN, "skills");
 
-// Two manifests, one directory: Hermes reads plugin.json at the root (Agent
-// Plugins v1), Claude Code reads .claude-plugin/plugin.json, Pi reads package.json.
+// Four manifests, one directory: Hermes reads plugin.json at the root (Agent
+// Plugins v1), Claude Code reads .claude-plugin/plugin.json, Pi reads package.json,
+// and OpenClaw reads openclaw.plugin.json plus package.json#openclaw.
 const portable = JSON.parse(read(join(PLUGIN, "plugin.json")));
 const manifest = JSON.parse(read(join(PLUGIN, ".claude-plugin", "plugin.json")));
 const piPackage = JSON.parse(read(join(PLUGIN, "package.json")));
+const openclaw = JSON.parse(read(join(PLUGIN, "openclaw.plugin.json")));
 
 const AGENT_PLUGINS_V1 = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 const MCP_SCHEMA_V1 = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
@@ -71,15 +74,19 @@ describe("Hermes portable manifest (Agent Plugins v1)", () => {
     expect(portable.name).toMatch(PORTABLE_NAME);
   });
 
-  test("all three manifests agree on name and version", () => {
-    expect(portable.name).toBe(manifest.name);
+  // The Hermes catalog key `job-search` belongs to agent-data/job-search, so the
+  // portable name is `jobsearch`; the Claude id keeps existing installs working.
+  test("portable name is jobsearch; the Claude id stays job-search; all versions agree", () => {
+    expect(portable.name).toBe(PLUGIN_NAMES.portable);
+    expect(manifest.name).toBe(PLUGIN_NAMES.claude);
     expect(portable.version).toBe(manifest.version);
     expect(piPackage.version).toBe(portable.version);
+    expect(openclaw.version).toBe(portable.version);
   });
 
-  test("shared metadata is identical; the Claude manifest only adds userConfig", () => {
-    const { $schema, ...shared } = portable;
-    const { userConfig, ...claudeShared } = manifest;
+  test("shared metadata is identical apart from the name; the Claude manifest only adds userConfig", () => {
+    const { $schema, name: _portableName, ...shared } = portable;
+    const { userConfig, name: _claudeName, ...claudeShared } = manifest;
     expect($schema).toBe(AGENT_PLUGINS_V1);
     expect(claudeShared).toEqual(shared);
     expect(userConfig.data_dir.type).toBe("directory");
@@ -89,7 +96,9 @@ describe("Hermes portable manifest (Agent Plugins v1)", () => {
     const config = JSON.parse(read(join(PLUGIN, "mcp.json")));
     expect(Object.keys(config).sort()).toEqual(["$schema", "mcpServers"]);
     expect(config.$schema).toBe(MCP_SCHEMA_V1);
-    const server = config.mcpServers[portable.name];
+    // The MCP server keeps its 2.4 name so tool names and existing host
+    // registrations (hosts-install) do not change with the package rename.
+    const server = config.mcpServers[manifest.name];
     expect(server.type).toBe("stdio");
     for (const field of Object.keys(server)) expect(STDIO_FIELDS.has(field)).toBe(true);
     expect(server.command.startsWith("./")).toBe(true);
@@ -136,10 +145,47 @@ describe("Claude Code plugin", () => {
 });
 
 describe("Pi package", () => {
-  test("declares the shared skills", () => {
-    expect(piPackage.name).toBe("@rohi/job-search-agent-plugin");
+  test("declares the shared skills under the @rohirik scope", () => {
+    expect(piPackage.name).toBe(PLUGIN_NAMES.npm);
     expect(piPackage.keywords).toContain("pi-package");
     expect(piPackage.pi).toEqual({ skills: ["./skills/*/SKILL.md"] });
+  });
+});
+
+describe("OpenClaw native package", () => {
+  test("manifest id is jobsearch, with a name, an empty closed config schema and the shared skills", () => {
+    expect(openclaw.id).toBe(PLUGIN_NAMES.portable);
+    expect(openclaw.name).toBeTruthy();
+    expect(openclaw.configSchema).toEqual({ type: "object", additionalProperties: false, properties: {} });
+    expect(openclaw.skills).toEqual(["./skills"]);
+  });
+
+  test("declares the same stdio MCP server as mcp.json, run from the plugin root", () => {
+    const portableServer = JSON.parse(read(join(PLUGIN, "mcp.json"))).mcpServers[manifest.name];
+    expect(Object.keys(openclaw.mcpServers)).toEqual([manifest.name]);
+    const server = openclaw.mcpServers[manifest.name];
+    expect(server).toEqual({ transport: "stdio", command: portableServer.command, args: portableServer.args });
+    expect(existsSync(join(PLUGIN, server.command))).toBe(true);
+  });
+
+  // ClawHub requires both for external code plugins; OpenClaw only takes the
+  // native path over .claude-plugin/ when package.json names an entry.
+  test("package.json carries the ClawHub compat/build fields and an in-package entry", () => {
+    expect(piPackage.openclaw.compat.pluginApi).toMatch(/^>=\d{4}\.\d+\.\d+/);
+    expect(piPackage.openclaw.build.openclawVersion).toMatch(/^\d{4}\.\d+\.\d+/);
+    expect(piPackage.openclaw.extensions).toEqual(["./openclaw-entry.js"]);
+    expect(existsSync(join(PLUGIN, "openclaw-entry.js"))).toBe(true);
+  });
+
+  test("the entry imports nothing and registers nothing in-process", async () => {
+    const source = read(join(PLUGIN, "openclaw-entry.js"));
+    expect(source).not.toMatch(/\bimport\b|\brequire\(/);
+    const entry = (await import(join(PLUGIN, "openclaw-entry.js"))).default;
+    expect(entry.id).toBe(openclaw.id);
+    const calls: string[] = [];
+    const api = new Proxy({}, { get: (_t, prop) => () => calls.push(String(prop)) });
+    entry.register(api);
+    expect(calls).toEqual([]);
   });
 });
 
@@ -252,7 +298,7 @@ describe("repo integration", () => {
 
   for (const directory of [ROOT, join(ROOT, "docs")]) {
     test(`OpenCode MCP connects from ${directory === ROOT ? "root" : "nested docs/"}`, async () => {
-      const [command, ...args] = openCode.mcp[portable.name].command as string[];
+      const [command, ...args] = openCode.mcp[manifest.name].command as string[];
       const client = new Client({ name: "integration-test", version: "1.0.0" });
       const transport = new StdioClientTransport({ command, args, cwd: directory, stderr: "ignore" });
       try {

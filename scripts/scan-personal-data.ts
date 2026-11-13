@@ -21,7 +21,7 @@
  *   bun run scan-personal-data --history       Scan every blob in all history
  *   bun run scan-personal-data --json          Machine-readable output
  *
- * Exit 0 when clean, 1 on any finding.
+ * Exit 0 when clean, 1 on any finding, 2 when git lists nothing to scan.
  */
 
 import { parseArgs } from "node:util";
@@ -138,21 +138,36 @@ export function redact(value: string): string {
   return `${value.slice(0, 2)}${"*".repeat(Math.max(3, value.length - 4))}${value.slice(-2)}`;
 }
 
-function sh(cmd: string[]): string {
-  const proc = Bun.spawnSync(cmd, { cwd: CODE_ROOT });
+function sh(cmd: string[], cwd: string = CODE_ROOT): string {
+  const proc = Bun.spawnSync(cmd, { cwd });
   if (proc.exitCode !== 0) return "";
   return proc.stdout.toString();
+}
+
+/**
+ * The file listing a scan walks. Fails closed: if git errors or lists nothing,
+ * the scan would "pass" having read zero files, which looks exactly like a
+ * clean repo. Throw instead so the gate goes red.
+ */
+export function listOrThrow(cmd: string[], cwd: string = CODE_ROOT): string {
+  const proc = Bun.spawnSync(cmd, { cwd });
+  const out = proc.exitCode === 0 ? proc.stdout.toString() : "";
+  if (out.trim() === "") {
+    const why = proc.exitCode === 0 ? "returned no output" : `exited ${proc.exitCode}: ${proc.stderr.toString().trim()}`;
+    throw new Error(`scan-personal-data: \`${cmd.join(" ")}\` ${why} in ${cwd}; refusing to report a clean scan of nothing`);
+  }
+  return out;
 }
 
 function isProbablyText(path: string): boolean {
   return !/\.(pdf|png|jpe?g|gif|ttf|otf|woff2?|ico|zip|db|bundle)$/i.test(path);
 }
 
-export function scanTracked(): Finding[] {
-  const files = sh(["git", "ls-files"]).split("\n").filter(Boolean).filter(isProbablyText);
+export function scanTracked(root: string = CODE_ROOT): Finding[] {
+  const files = listOrThrow(["git", "ls-files"], root).split("\n").filter(Boolean).filter(isProbablyText);
   const findings: Finding[] = [];
   for (const file of files) {
-    const content = sh(["git", "show", `HEAD:${file}`]);
+    const content = sh(["git", "show", `HEAD:${file}`], root);
     if (content) findings.push(...scanText(content, file));
   }
   return findings;
@@ -175,8 +190,8 @@ export function scanStaged(): Finding[] {
  * Every blob in every reachable commit. Catches a bad force-push or a merge
  * that reintroduces an old blob — the diff-only scan cannot see either.
  */
-export function scanHistory(): Finding[] {
-  const listing = sh(["git", "rev-list", "--all", "--objects"]);
+export function scanHistory(root: string = CODE_ROOT): Finding[] {
+  const listing = listOrThrow(["git", "rev-list", "--all", "--objects"], root);
   const findings: Finding[] = [];
   const seen = new Set<string>();
 
@@ -186,9 +201,9 @@ export function scanHistory(): Finding[] {
     if (!sha || !path || seen.has(sha) || !isProbablyText(path)) continue;
     seen.add(sha);
 
-    const type = sh(["git", "cat-file", "-t", sha]).trim();
+    const type = sh(["git", "cat-file", "-t", sha], root).trim();
     if (type !== "blob") continue;
-    const content = sh(["git", "cat-file", "blob", sha]);
+    const content = sh(["git", "cat-file", "blob", sha], root);
     if (content) findings.push(...scanText(content, path));
   }
   return findings;
@@ -204,7 +219,8 @@ Modes:
   --staged    staged content only — the pre-commit hook path
   --history   every blob in every reachable commit
 
-Exit 0 when clean, 1 on any finding. Matches are redacted in output.`;
+Exit 0 when clean, 1 on any finding, 2 when git lists nothing to scan
+(fail closed). Matches are redacted in output.`;
 
 export async function main(): Promise<number> {
   const { values } = parseArgs({
@@ -224,7 +240,13 @@ export async function main(): Promise<number> {
   }
 
   const mode = values.history ? "history" : values.staged ? "staged" : "tracked";
-  const findings = values.history ? scanHistory() : values.staged ? scanStaged() : scanTracked();
+  let findings: Finding[];
+  try {
+    findings = values.history ? scanHistory() : values.staged ? scanStaged() : scanTracked();
+  } catch (error) {
+    console.error(`✗ ${(error as Error).message}`);
+    return 2;
+  }
 
   if (values.json) {
     console.log(JSON.stringify({ mode, findings, pass: findings.length === 0 }, null, 2));

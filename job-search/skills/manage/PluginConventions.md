@@ -8,7 +8,7 @@ The synced `create-skill`, `create-cli-agent` and `create-plugin` skills come fr
 | Context files are TitleCase `.md` in the skill root | Same; the numbered `cv/0X-*.md` references keep their names | Unchanged |
 | Description ≤ 30 words | Host limit 1024 characters; must contain `USE WHEN` and `NOT FOR` and be > 80 characters (`tests/job-search-plugin.test.ts`) | Routing signal matches the other plugin skills |
 | `allowed-tools` any form | **A single string**, never a YAML list | Hermes skips a skill whose value is a list |
-| Telemetry line to `~/.claude/state/execution.jsonl` | **None.** `jobsearch` logs every call to `<workspace>/data/state/agent-calls.jsonl` | Host-neutral; no Claude-only paths in shipped skills |
+| Telemetry line to `~/.claude/state/execution.jsonl` | **None.** With `JOB_SEARCH_TELEMETRY=1` (opt-in), `jobsearch` logs every call to `<workspace>/data/state/agent-calls.jsonl` | Host-neutral; no Claude-only paths in shipped skills |
 | README row per skill | Row in the skill table of `job-search/README.md` | The plugin's own index |
 | Workflow skills may assume the user's tools | Every workflow skill body contains "Never ask the user to run a command" and runs `jobsearch` itself | Tested |
 | Commands are `bun run <script>` | `jobsearch <command>`; `jobsearch run <tool>` for single-purpose tools; `bun run` only for checkout-only maintainer steps | Installs have no repo checkout |

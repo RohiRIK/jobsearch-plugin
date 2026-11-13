@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CODE_ROOT as ROOT } from "../../src/paths.js";
 
-const MANIFESTS = ["job-search/plugin.json", "job-search/.claude-plugin/plugin.json", "job-search/package.json"];
+const MANIFESTS = ["job-search/plugin.json", "job-search/.claude-plugin/plugin.json", "job-search/package.json", "job-search/openclaw.plugin.json"];
 const SEMVER = /^\d+\.\d+\.\d+$/;
 
 function emit(value: unknown, code: number): never {

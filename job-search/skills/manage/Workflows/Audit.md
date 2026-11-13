@@ -2,10 +2,10 @@
 
 Is the system cheap for agents to use? Measure, then propose cuts. Read-only.
 
-1. **Usage.** Summarise `<workspace>/data/state/agent-calls.jsonl` (one line per `jobsearch` call: `command`, `exit`, `ms`, `bytes`):
+1. **Usage.** Summarise `<workspace>/data/state/agent-calls.jsonl` (one line per `jobsearch` call: `command`, `exit`, `ms`, `bytes`). The log is opt-in (`JOB_SEARCH_TELEMETRY=1`), so it is usually absent: then say "no usage log (telemetry is off; set JOB_SEARCH_TELEMETRY=1 to collect one)", skip this step and go on.
 
    ```bash
-   bun -e 'const rows=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);const by={};for(const r of rows){const b=by[r.command]??={calls:0,errors:0,bytes:0,ms:0};b.calls++;if(r.exit>=2)b.errors++;b.bytes+=r.bytes;b.ms+=r.ms}console.log(JSON.stringify(by,null,1))' <workspace>/data/state/agent-calls.jsonl
+   bun -e 'const fs=require("fs"),f=process.argv[1];if(!fs.existsSync(f)){console.log(JSON.stringify({usageLog:"absent",hint:"telemetry is opt-in: JOB_SEARCH_TELEMETRY=1"}));process.exit(0)}const rows=fs.readFileSync(f,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse);const by={};for(const r of rows){const b=by[r.command]??={calls:0,errors:0,bytes:0,ms:0};b.calls++;if(r.exit>=2)b.errors++;b.bytes+=r.bytes;b.ms+=r.ms}console.log(JSON.stringify(by,null,1))' <workspace>/data/state/agent-calls.jsonl
    ```
 
    Look for: commands with high error rates (bad docs or a bad contract), large average `bytes` (offer `--fields` in the skill), repeated sequences that a single command could replace.

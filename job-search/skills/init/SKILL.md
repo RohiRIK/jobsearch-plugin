@@ -99,12 +99,11 @@ Enables `.githooks/pre-commit` (blocks a commit containing personal contact
 details) and `.githooks/pre-push` (runs typecheck, tests and the personal-data
 scan over tracked files *and* full history).
 
-**Say this to the user plainly:** GitHub Actions on this repo has been refusing
-to start since 2026-07-18 on a billing failure — the repo is private, so Actions
-bills against a minutes allowance. The workflows are correct and will run once
-that is resolved, but until then **the local hooks are the only layer that
-actually executes**. Someone committing with `--no-verify`, or from a clone
-where `hooks:install` was never run, has no safety net.
+**Say this to the user plainly:** GitHub Actions runs the same checks on every
+pull request, but only after the push, when the data has already left the
+machine. **The local hooks are the only layer that stops it before that.**
+Someone committing with `--no-verify`, or from a clone where `hooks:install`
+was never run, is caught only after the fact.
 
 ## 4. Prove it
 

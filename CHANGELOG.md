@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 2.5.0 - 2026-11-13
+
+### Added
+- **OpenClaw native package.** `job-search/openclaw.plugin.json` (id `jobsearch`) declares the skills and the `job-search` stdio MCP server; `package.json` is now `@rohirik/jobsearch` with `openclaw.compat.pluginApi`, `openclaw.build.openclawVersion` and an entry (`openclaw-entry.js`) that imports and registers nothing, so OpenClaw installs it as a native plugin instead of the Claude bundle. `clawhub package validate` passes with no findings. Not published.
+- **"Before you install" disclosure** in the plugin README: job-board fetches, shell tools, the opt-in Typst download, `@napi-rs/canvas`, the checkout-only local REST API, the workspace location and the opt-in local usage log.
+
+### Changed
+- **The local usage log is now opt-in.** `data/state/agent-calls.jsonl` is written only when `JOB_SEARCH_TELEMETRY=1`; unset or any other value writes nothing (previously on unless `=0`). Unknown commands are logged as `<unknown>` instead of the raw text, and the `manage` Audit workflow handles a missing log.
+- **`scan-personal-data` fails closed:** an error or empty output from `git ls-files` / `git rev-list` now exits 2 instead of reporting a clean scan of nothing.
+- **Hermes and OpenClaw name: `jobsearch`.** The Hermes catalog key `job-search` belongs to an unrelated plugin, so the portable `plugin.json` name is now `jobsearch`. The Claude Code id stays `job-search@rohirik` (Claude Code keys installs by `plugin@marketplace`; renaming breaks existing installs), and the MCP server keeps the name `job-search`, so tool names and `hosts-install` registrations are unchanged. `plugin:check` now asserts each host's expected name instead of one shared name, and `plugin:release` bumps `openclaw.plugin.json` too.
+
+### Fixed
+- **`tools-install` verifies the Typst download.** The release archive is checked against a SHA-256 pinned per platform before it is unpacked; a mismatch installs nothing, and a version without pins is refused before any download.
+- **Document polish (RohiRIK/jobsearch-plugin#18, source #13).** Skill values share one column with tested row clearance, CV dates no longer invent month precision, approved portraits compile with a separate workspace and code root, cover letters carry the underlined website link, standalone production tags are dropped without losing scope restrictions, and both PDFs keep the profile's website and LinkedIn link annotations. CI installs Poppler so the PDF geometry and link tests run instead of skipping.
+
 ## 2.4.3 - 2026-10-04
 
 - The outcome skill's `reason log` example now passes the required `--confidence`;

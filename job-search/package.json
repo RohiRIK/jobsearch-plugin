@@ -1,6 +1,6 @@
 {
-  "name": "@rohi/job-search-agent-plugin",
-  "version": "2.4.3",
+  "name": "@rohirik/jobsearch",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "description": "Evidence-grounded job-search workflows for AI coding agents.",
@@ -16,5 +16,23 @@
     "skills": [
       "./skills/*/SKILL.md"
     ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RohiRIK/jobsearch-plugin.git",
+    "directory": "job-search"
+  },
+  "homepage": "https://github.com/RohiRIK/jobsearch-plugin",
+  "openclaw": {
+    "extensions": [
+      "./openclaw-entry.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.11.3",
+      "minGatewayVersion": "2026.11.3"
+    },
+    "build": {
+      "openclawVersion": "2026.11.3"
+    }
   }
 }

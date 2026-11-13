@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { TYPST_VERSION, typstRelease } from "../src/jobsearch/toolchain.js";
+import { TYPST_SHA256, TYPST_VERSION, typstRelease } from "../src/jobsearch/toolchain.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 let ws: string;
@@ -28,11 +28,30 @@ describe("tools-install", () => {
     expect(() => typstRelease("0.13.1", "win32", "x64")).toThrow(/package manager/);
   });
 
-  test("refuses without --yes and previews the URL and workspace path with --dry-run", () => {
+  test("refuses without --yes and previews the URL, checksum and workspace path with --dry-run", () => {
     expect(js(["tools-install"]).out.error.type).toBe("confirmation_required");
     const preview = js(["tools-install", "--dry-run"]);
     expect(preview.code).toBe(10);
     expect(preview.out.data.path).toBe(join(ws, "data", "tools", "bin", "typst"));
+    expect(preview.out.data.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  // Hermes catalog rule 17: a binary fetched at setup comes from the upstream
+  // release, pinned by checksum.
+  test("every supported platform of the pinned version has a SHA-256 pin", () => {
+    for (const [platform, arch] of [["linux", "x64"], ["linux", "arm64"], ["darwin", "x64"], ["darwin", "arm64"]] as const) {
+      const release = typstRelease(TYPST_VERSION, platform, arch);
+      expect(release.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(TYPST_SHA256[TYPST_VERSION][release.archive]).toBe(release.sha256);
+    }
+  });
+
+  test("a version without pinned checksums is refused before any download", () => {
+    expect(() => typstRelease("0.12.0", "linux", "x64")).toThrow(/no pinned checksum/);
+    const res = js(["tools-install", "--version", "0.12.0", "--dry-run"]);
+    expect(res.code).not.toBe(0);
+    expect(res.out.ok).toBe(false);
+    expect(res.out.error.message).toMatch(/no pinned checksum/);
   });
 
   test("a binary in the workspace tools dir is found without any PATH change", () => {
@@ -44,5 +63,21 @@ describe("tools-install", () => {
       env: { ...process.env, JOB_SEARCH_HOME: ws, PATH: "/nonexistent", JOB_SEARCH_BIN_PATH: "" },
     });
     expect(proc.stdout.toString().trim()).toBe(join(bin, "typst"));
+  });
+
+  test("a download whose SHA-256 does not match the pin installs nothing", () => {
+    // Runs in a child so the fetch stub cannot leak into other tests.
+    const script = `
+      globalThis.fetch = async () => new Response(new Uint8Array([1, 2, 3, 4]));
+      const { TOOLCHAIN_COMMANDS } = await import("${join(ROOT, "src/jobsearch/toolchain.ts")}");
+      try { await TOOLCHAIN_COMMANDS["tools-install"].run({ tool: "typst", yes: true }); console.log("installed"); }
+      catch (e) { console.log(e.message); }`;
+    const proc = Bun.spawnSync([process.execPath, "-e", script], {
+      env: { ...process.env, JOB_SEARCH_HOME: ws, JOB_SEARCH_TELEMETRY: "0" },
+    });
+    expect(proc.stdout.toString()).toMatch(/checksum mismatch .*nothing was installed/);
+    const bin = join(ws, "data", "tools", "bin");
+    expect(existsSync(join(bin, "typst"))).toBe(false);
+    expect(readdirSync(bin)).toEqual([]); // the .download- work dir is removed too
   });
 });

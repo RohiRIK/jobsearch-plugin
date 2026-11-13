@@ -11,11 +11,14 @@ let home: string;
 let profilePath: string;
 
 /** Every call runs against an isolated workspace — never the real data/. */
-async function js(args: string[], env: Record<string, string> = {}): Promise<{ code: number; stdout: string; stderr: string }> {
+async function js(args: string[], env: Record<string, string | undefined> = {}): Promise<{ code: number; stdout: string; stderr: string }> {
+  // A key set to undefined is removed, so a test can run with a variable unset.
+  const merged: Record<string, string | undefined> = { ...process.env, JOB_SEARCH_HOME: home, TRACKER_DB: "", ...env };
+  for (const key of Object.keys(merged)) if (merged[key] === undefined) delete merged[key];
   const proc = Bun.spawn([process.execPath, join(ROOT, "scripts/jobsearch.ts"), ...args], {
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, JOB_SEARCH_HOME: home, TRACKER_DB: "", ...env },
+    env: merged as Record<string, string>,
   });
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   return { code: await proc.exited, stdout, stderr };
@@ -83,19 +86,32 @@ describe("contract", () => {
     expect(Object.keys(data.fit)).toEqual(["score"]);
   });
 
-  test("the call log records command, exit and size — never arguments", async () => {
-    await js(["triage", "--job", join(home, "data", "jd", "platform.txt"), "--company", "SecretCorp"]);
+  test("with JOB_SEARCH_TELEMETRY=1 the call log records command, exit and size — never arguments", async () => {
+    await js(["triage", "--job", join(home, "data", "jd", "platform.txt"), "--company", "SecretCorp"], { JOB_SEARCH_TELEMETRY: "1" });
     const log = readFileSync(join(home, "data", "state", "agent-calls.jsonl"), "utf-8");
     expect(log).toContain('"command":"triage"');
     expect(log).not.toContain("SecretCorp");
     expect(log).not.toContain("platform.txt");
   });
 
-  test("JOB_SEARCH_TELEMETRY=0 disables the call log", async () => {
-    const quietHome = join(dir, "quiet");
-    mkdirSync(quietHome);
-    await js(["data-where"], { JOB_SEARCH_HOME: quietHome, JOB_SEARCH_TELEMETRY: "0" });
-    expect(existsSync(join(quietHome, "data", "state"))).toBe(false);
+  test("the call log is off by default and for any value other than 1", async () => {
+    for (const value of [undefined, "0", "true", "yes", ""]) {
+      const quietHome = join(dir, `quiet-${value ?? "unset"}`);
+      mkdirSync(quietHome);
+      const { code } = await js(["data-where"], { JOB_SEARCH_HOME: quietHome, JOB_SEARCH_TELEMETRY: value });
+      expect(code).toBe(0);
+      expect(existsSync(join(quietHome, "data", "state", "agent-calls.jsonl"))).toBe(false);
+    }
+  });
+
+  test("an unknown command is logged as <unknown>, never as typed", async () => {
+    const loudHome = join(dir, "loud");
+    mkdirSync(loudHome);
+    const { code } = await js(["SecretCorp-offer.pdf"], { JOB_SEARCH_HOME: loudHome, JOB_SEARCH_TELEMETRY: "1" });
+    expect(code).toBe(2);
+    const log = readFileSync(join(loudHome, "data", "state", "agent-calls.jsonl"), "utf-8");
+    expect(JSON.parse(log.trim()).command).toBe("<unknown>");
+    expect(log).not.toContain("SecretCorp");
   });
 });
 

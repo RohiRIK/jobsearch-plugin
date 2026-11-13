@@ -88,8 +88,8 @@ One command table (`COMMANDS`, today in `scripts/agent.ts`) is the source of tru
 
    `.agents/install/hermes.sh` and `openclaw.sh` become one-release wrappers, then go.
 10. **Maintainer actions stay out of the shipped tool.** `jobsearch` (bundled, end-user) covers use, hosts and data. `bun run plugin:build|plugin:check|plugin:sync-skills|plugin:release` (repo-only) covers building and releasing. The `manage` skill drives both and says which needs a checkout.
-11. **Efficiency is a gate, not a goal.** `tests/context-budget.test.ts` puts ceilings on model-visible entries, description bytes, MCP schema bytes, triage output size and bundle size. Every number in the targets table below is enforced, so regressions fail `bun run gates` locally, where the checks actually run while Actions is billing-blocked.
-12. **The tool measures itself.** Every `jobsearch` call appends `{ts, command, exit, ms, stdoutBytes}` to `$JOB_SEARCH_HOME/state/agent-calls.jsonl`. It never records arguments, and `JOB_SEARCH_TELEMETRY=0` turns it off. `manage` Audit reads this to find which commands agents actually use, which fail, and which outputs are large. This replaces the library's Claude-only `~/.claude/state/execution.jsonl` line.
+11. **Efficiency is a gate, not a goal.** `tests/context-budget.test.ts` puts ceilings on model-visible entries, description bytes, MCP schema bytes, triage output size and bundle size. Every number in the targets table below is enforced, so regressions fail `bun run gates` locally (the pre-push hook) and in CI.
+12. **The tool can measure itself, opt-in.** With `JOB_SEARCH_TELEMETRY=1`, every `jobsearch` call appends `{ts, command, exit, ms, bytes}` to `<workspace>/data/state/agent-calls.jsonl`; unset or any other value writes nothing. It never records arguments, and an unknown command is logged as `<unknown>`, not as typed. `manage` Audit reads this to find which commands agents actually use, which fail, and which outputs are large. This replaces the library's Claude-only `~/.claude/state/execution.jsonl` line.
 
 ## The `manage` skill
 

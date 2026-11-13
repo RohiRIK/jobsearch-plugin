@@ -1,0 +1,23 @@
+{
+  "id": "jobsearch",
+  "name": "jobsearch",
+  "description": "Evidence-grounded job-search workflow: onboard a profile, research and score roles, draft market-aware CVs and cover letters that pass a machine gate, and record outcomes.",
+  "version": "2.5.0",
+  "skills": [
+    "./skills"
+  ],
+  "mcpServers": {
+    "job-search": {
+      "transport": "stdio",
+      "command": "./scripts/jobsearch",
+      "args": [
+        "mcp"
+      ]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

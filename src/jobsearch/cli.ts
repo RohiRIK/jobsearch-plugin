@@ -109,10 +109,15 @@ export function validateValues(command: string, spec: CommandSpec, values: Value
 /**
  * Local usage log: command, exit, duration, stdout bytes — never arguments,
  * which can carry company names. Feeds the manage skill's Audit workflow.
- * JOB_SEARCH_TELEMETRY=0 turns it off; failure to write is ignored.
+ * Opt-in: written only when JOB_SEARCH_TELEMETRY=1 (unset or any other value is
+ * off). Never sent anywhere; failure to write is ignored.
  */
+export function telemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.JOB_SEARCH_TELEMETRY === "1";
+}
+
 function logCall(command: string, exit: number, ms: number, bytes: number): void {
-  if (process.env.JOB_SEARCH_TELEMETRY === "0") return;
+  if (!telemetryEnabled()) return;
   try {
     const path = join(WORKSPACE, "data", "state", "agent-calls.jsonl");
     mkdirSync(dirname(path), { recursive: true });
@@ -146,8 +151,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   const started = performance.now();
-  const finish = (exit: number) => {
-    logCall(command, exit, Math.round(performance.now() - started), bytes);
+  // An unknown command is whatever the caller typed (a typo, a path, a company
+  // name), so it is logged as "<unknown>", never verbatim.
+  const finish = (exit: number, logged: string = command) => {
+    logCall(logged, exit, Math.round(performance.now() - started), bytes);
     return exit;
   };
 
@@ -157,7 +164,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (!spec) {
     const { envelope, exit } = errorEnvelope(new AgentError("usage", `unknown command ${JSON.stringify(command)}`, [`one of: ${Object.keys(COMMANDS).join(", ")}`, "jobsearch --help-json"]));
     write(envelope);
-    return finish(exit);
+    return finish(exit, "<unknown>");
   }
 
   try {

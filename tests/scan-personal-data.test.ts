@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { redact, scanText } from "../scripts/scan-personal-data.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { listOrThrow, redact, scanHistory, scanText, scanTracked } from "../scripts/scan-personal-data.js";
 
 const FILE = "some/file.md";
 
@@ -80,5 +83,44 @@ describe("redact", () => {
 
   test("fully masks a very short value", () => {
     expect(redact("abc")).toBe("***");
+  });
+});
+
+describe("fail closed when git lists nothing", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd });
+
+  test("an empty repository makes the tracked and history scans throw, not pass", () => {
+    const dir = mkdtempSync(join(tmpdir(), "scan-empty-"));
+    try {
+      git(dir, "init", "-q");
+      expect(() => scanTracked(dir)).toThrow(/git ls-files.*no output/);
+      expect(() => scanHistory(dir)).toThrow(/git rev-list.*no output/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a git error throws too", () => {
+    const dir = mkdtempSync(join(tmpdir(), "scan-nogit-"));
+    try {
+      expect(() => listOrThrow(["git", "rev-list", "--all", "--objects"], dir)).toThrow(/exited/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a repository with a commit still scans normally", () => {
+    const dir = mkdtempSync(join(tmpdir(), "scan-one-"));
+    try {
+      git(dir, "init", "-q");
+      writeFileSync(join(dir, "a.md"), "nothing personal here\n");
+      git(dir, "add", "a.md");
+      git(dir, "commit", "-qm", "init");
+      expect(scanTracked(dir)).toEqual([]);
+      expect(scanHistory(dir)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
