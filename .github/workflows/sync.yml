@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: public
-          ref: main          
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN }}
 
@@ -37,6 +37,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      # sync-public.sh runs `bun run gates` before it commits, and the PDF
+      # geometry/link tests from #18 shell out to pdftotext and pdfinfo. CI
+      # installs poppler-utils for the same reason; without it every hourly
+      # sync since 2026-11-06 failed in the gate and pushed nothing.
+      - name: Install PDF inspection tools
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
 
       - name: Regenerate and commit
         run: |
