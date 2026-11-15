@@ -27,14 +27,47 @@ jobs:
           sudo chown root:root /opt/google/chrome/chrome-sandbox
           sudo chmod 4755 /opt/google/chrome/chrome-sandbox
 
+      - name: Route PDF tests to the sandboxed Chrome package
+        run: |
+          # The image also ships a Chromium snapshot (/usr/local/share/chromium,
+          # linked as /usr/bin/chromium and chromium-browser) that the exporter
+          # resolves first. It is root-owned with no SUID helper beside it, and
+          # Chromium ignores CHROME_DEVEL_SANDBOX for executables the current user
+          # does not own, so under Ubuntu's userns restriction it aborts with
+          # "No usable sandbox". Remove only those two links on this ephemeral
+          # runner; the signed package keeps its helper next to its executable.
+          # Never use --no-sandbox or relax AppArmor/userns host-wide.
+          echo "apparmor_restrict_unprivileged_userns=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo n/a)"
+          for link in /usr/bin/chromium /usr/bin/chromium-browser; do
+            [ -e "$link" ] || [ -L "$link" ] || continue
+            target="$(readlink -f "$link")"
+            stat -c '%n owner=%U:%G mode=%a' "$target"
+            ls -l "$(dirname "$target")"/chrome-sandbox "$(dirname "$target")"/chrome_sandbox 2>&1 || true
+            case "$target" in
+              /usr/local/share/chromium/*) sudo rm "$link" ;;
+              *) echo "::error::$link resolves to unexpected $target"; exit 1 ;;
+            esac
+          done
+          # Validate with the exporter's own resolver and candidate order.
+          bun -e '
+            import { realpathSync, statSync } from "node:fs";
+            import { dirname, join } from "node:path";
+            const { resolveBin } = await import(join(process.cwd(), "src/resolve-bin.ts"));
+            const found = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].map(resolveBin).find(Boolean);
+            if (!found) throw new Error("no browser resolved");
+            const exe = realpathSync(found), helper = join(dirname(exe), "chrome-sandbox");
+            const e = statSync(exe), h = statSync(helper);
+            console.log(`selected ${found} -> ${exe} uid=${e.uid}; helper ${helper} uid=${h.uid} mode=${(h.mode & 0o7777).toString(8)}`);
+            // google-chrome links to the package launcher, which execs ./chrome.
+            if (dirname(exe) !== "/opt/google/chrome" || e.uid !== 0) throw new Error("selected browser is not the root-owned signed Chrome package");
+            if (h.uid !== 0 || (h.mode & 0o4000) === 0 || (h.mode & 0o001) === 0) throw new Error("chrome-sandbox is not a root-owned setuid helper");
+          '
+          # Exercise the sandbox itself before the suite: Chrome aborts at zygote
+          # start-up when no sandbox is usable.
+          google-chrome-stable --headless --disable-gpu --user-data-dir="$(mktemp -d)" --dump-dom 'data:text/html,<p>sandbox-ok</p>' | grep -q sandbox-ok
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
       - name: Test
-        env:
-          # Chromium's documented SUID helper keeps sandboxing on under Ubuntu's
-          # restricted user namespaces; never use --no-sandbox or disable AppArmor.
-          CHROME_DEVEL_SANDBOX: /opt/google/chrome/chrome-sandbox
-        run: |
-          test -u "$CHROME_DEVEL_SANDBOX"
-          bun test tests/
+        run: bun test tests/
