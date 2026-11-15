@@ -57,33 +57,61 @@
       swiss-grid: (accent: rgb("#111111"), density: "balanced", marker: "–", name-size: size-name, profile-fill: false, heading: "swiss"),
       project-first: (accent: accent, density: "balanced", marker: "•", name-size: size-name, profile-fill: true, heading: "rule"),
       creative: (accent: rgb("#7c3aed"), density: "roomy", marker: "•", name-size: size-name, profile-fill: true, heading: "rule"),
+      modern-airy: (accent: accent, density: "balanced", marker: "•", name-size: 26pt, section-size: 11.5pt, entry-size: 10.5pt, body-size: 10.3pt, meta-size: 9.5pt, leading: 0.45em, gap-section: 10pt, gap-entry: 8pt, margin-x: 15mm, margin-y: 12.5mm, font: "Liberation Sans", profile-fill: true, heading: "airy"),
     )
     let style = styles.at(layout, default: styles.modern)
     let dense = style.density in ("compact", "tight")
     let tight = style.density == "tight"
     let style-accent = style.accent
     let bullet = style.marker
+    // Local per-layout typography overrides (modern-airy). Every other layout
+    // falls back to the shared design-system defaults, so existing variants
+    // render exactly as before; nothing here changes shared defaults globally.
+    let effective-meta = if layout == "modern-airy" { rgb("#56646f") } else { meta }
+    let effective-font = style.at("font", default: body-font)
+    let effective-name-size = style.at("name-size", default: size-name)
+    let effective-section-size = style.at("section-size", default: size-section)
+    let effective-entry-size = style.at("entry-size", default: size-entry)
+    let effective-body-size = style.at("body-size", default: size-body)
+    let effective-meta-size = style.at("meta-size", default: size-meta)
+    let effective-leading = style.at("leading", default: leading-body)
+    let effective-gap-section = style.at("gap-section", default: gap-section)
+    let effective-gap-entry = style.at("gap-entry", default: gap-entry)
+    let effective-margin-x = style.at("margin-x", default: margin-x)
+    let effective-margin-y = style.at("margin-y", default: 1.6cm)
     let section = title => if style.heading == "rule" {
       section-title(title, fill: style-accent)
+    } else if style.heading == "airy" {
+      // modern-airy: title with an underline divider and a fixed 5pt
+      // divider-to-content gap, kept with the following content.
+      block(breakable: false, sticky: true, above: effective-gap-section, below: 0pt, {
+        [#metadata(title) <cv-section>]
+        stack(dir: ttb, spacing: 0pt,
+          text(size: effective-section-size, weight: "bold", fill: style-accent)[#title],
+          block(height: 3pt),
+          rect(width: 100%, height: 0.4pt, fill: style-accent, stroke: none),
+          block(height: 5pt),
+        )
+      })
     } else {
       // Same keep-with-next contract as section-title; only the look differs.
-      block(breakable: false, sticky: true, above: gap-section, below: 4pt, {
+      block(breakable: false, sticky: true, above: effective-gap-section, below: 4pt, {
         [#metadata(title) <cv-section>]
         if style.heading == "swiss" {
           line(length: 100%, stroke: 1.4pt + style-accent)
           v(3pt)
-          pad(bottom: 3pt, text(size: size-meta, weight: "bold", tracking: 0.08em, fill: style-accent)[#upper(title)])
+          pad(bottom: 3pt, text(size: effective-meta-size, weight: "bold", tracking: 0.08em, fill: style-accent)[#upper(title)])
         } else if style.heading == "caps" {
-          text(size: size-section - 1pt, weight: "bold", tracking: 0.06em, fill: style-accent)[#upper(title)]
+          text(size: effective-section-size - 1pt, weight: "bold", tracking: 0.06em, fill: style-accent)[#upper(title)]
           v(2pt)
           line(length: 100%, stroke: 0.6pt + style-accent)
         } else {
-          pad(bottom: 3pt, text(size: size-section, weight: "bold", fill: style-accent)[#title])
+          pad(bottom: 3pt, text(size: effective-section-size, weight: "bold", fill: style-accent)[#title])
         }
       })
     }
-    set page(paper: "a4", margin: (x: if tight { 1.35cm } else if dense { 1.6cm } else { margin-x }, y: if tight { 1.2cm } else if dense { 1.35cm } else { 1.6cm }))
-    set text(font: body-font, size: if tight { 9pt } else if dense { 9.3pt } else { size-body })
+    set page(paper: "a4", margin: (x: if tight { 1.35cm } else if dense { 1.6cm } else { effective-margin-x }, y: if tight { 1.2cm } else if dense { 1.35cm } else { effective-margin-y }))
+    set text(font: effective-font, size: if tight { 9pt } else if dense { 9.3pt } else { effective-body-size })
 
     if is-rtl {
       set text(dir: rtl, fill: body-color)
@@ -91,31 +119,32 @@
       set text(fill: body-color)
     }
 
+    set par(spacing: 5pt) if layout == "modern-airy" and sys.version >= version(0, 13, 0)
     show link: underline
-    set par(leading: if dense { 0.45em } else if style.density == "roomy" { 0.65em } else { leading-body }, justify: false)
+    set par(leading: if dense { 0.45em } else if style.density == "roomy" { 0.65em } else { effective-leading }, justify: false)
 
     // Header: every contact value remains literal text in reading order. The
     // optional photo is decorative and market-gated by the renderer; it never
     // replaces literal contact text.
     let header-text = {
-      text(font: heading-font, size: style.name-size, weight: "bold", fill: style-accent)[#name]
+      text(font: effective-font, size: effective-name-size, weight: "bold", fill: style-accent)[#name]
       if lastname != "" [
         #h(7pt)
-        #text(font: heading-font, size: style.name-size, weight: "bold", fill: style-accent)[#lastname]
+        #text(font: effective-font, size: effective-name-size, weight: "bold", fill: style-accent)[#lastname]
       ]
       if headline != "" [
         #v(3pt)
-        #text(size: size-meta, fill: meta)[#headline]
+        #text(size: effective-meta-size, fill: effective-meta)[#headline]
       ]
       if contact.len() > 0 {
         v(5pt)
-        text(size: size-meta, fill: body-color)[
+        text(size: effective-meta-size, fill: body-color)[
           #contact.join([#h(5pt)•#h(5pt)])
         ]
       }
       if languages.len() > 0 {
         v(2pt)
-        text(size: size-meta, fill: meta)[
+        text(size: effective-meta-size, fill: effective-meta)[
           #metadata(languages.join(", ")) <cv-languages>
           Languages: #languages.join([#h(4pt)•#h(4pt)])
         ]
@@ -126,7 +155,7 @@
         columns: (1fr, auto),
         gutter: 18pt,
         align(left, header-text),
-        align(top + right, image(photo, height: 2.8cm)),
+        align(top + right, image(photo, height: if layout == "modern-airy" { 2.2cm } else { 2.8cm })),
       )
     } else {
       align(left, header-text)
@@ -136,16 +165,16 @@
     // block, including on the older npm Typst fallback.
     let summary-section = {
       if profile != "" {
-        block(breakable: false, above: gap-section, {
+        block(breakable: false, above: effective-gap-section, {
           section("Profile")
           block(
             width: 100%,
             fill: if style.profile-fill { rgb("#f2f6f9") } else { none },
-            inset: if style.profile-fill { (x: 9pt, y: 7pt) } else { (x: 0pt, y: 2pt) },
+            inset: if style.profile-fill { (x: 9pt, y: if layout == "modern-airy" { 4pt } else { 7pt }) } else { (x: 0pt, y: 2pt) },
             radius: 2pt,
           )[
             #metadata(profile) <cv-profile>
-            #text(size: size-body, fill: body-color)[#profile]
+            #text(size: effective-body-size, fill: body-color)[#profile]
           ]
         })
       }
@@ -155,28 +184,68 @@
           // Fixed shared width aligns all rows while preserving page-break and
           // heading-with-first-row behavior from the current template.
           grid(
-            columns: (4.6cm, 1fr),
+            columns: (if layout == "modern-airy" { 3.65cm } else { 4.6cm }, 1fr),
             gutter: 8pt,
-            block(width: 100%)[#text(size: size-meta, weight: "bold", fill: meta)[#skill.label]],
-            block(width: 100%)[#text(size: size-body, fill: body-color)[#skill-value]],
+            block(width: 100%)[#text(size: effective-meta-size, weight: "bold", fill: effective-meta)[#skill.label]],
+            block(width: 100%)[#text(size: effective-body-size, fill: body-color)[#skill-value]],
           )
-          v(8pt)
+          v(if layout == "modern-airy" { 3pt } else { 8pt })
         }
-        block(breakable: false, above: gap-section, { section("Skills"); skill-row(skills.at(0)) })
+        block(breakable: false, above: effective-gap-section, { section("Skills"); skill-row(skills.at(0)) })
         for skill in skills.slice(1) { block(breakable: false, skill-row(skill)) }
+      }
+    }
+
+    let render-entry(date, title, organization, location, content, lead) = {
+      if layout != "modern-airy" {
+        cv-entry(date: date, title: title, organization: organization, location: location, content: content, lead: lead, marker: bullet)
+      } else {
+        // modern-airy entry rendered with the variant's own effective sizes.
+        block(breakable: false, above: if lead != none { effective-gap-section } else { 1.2em }, {
+          if lead != none { lead }
+          grid(
+            columns: (1fr, auto),
+            gutter: 8pt,
+            [
+              #text(weight: "bold", size: effective-entry-size)[#title]
+              #if organization != "" [#h(4pt) #text(weight: "regular", size: effective-body-size)[at #organization]]
+              #if location != "" [#linebreak() #text(size: effective-meta-size, fill: effective-meta)[#location]]
+            ],
+            align(right)[#text(size: effective-meta-size, fill: effective-meta)[#date]],
+          )
+          if content.len() > 0 {
+            v(3pt)
+            grid(
+              columns: (8pt, 1fr),
+              gutter: 2pt,
+              text(size: effective-body-size)[#bullet],
+              text(size: effective-body-size)[#content.at(0)],
+            )
+            v(1pt)
+          }
+        })
+        for item in content.slice(calc.min(1, content.len())) {
+          block(breakable: false, grid(
+            columns: (8pt, 1fr),
+            gutter: 2pt,
+            text(size: effective-body-size)[#bullet],
+            text(size: effective-body-size)[#item],
+          ))
+          v(1pt)
+        }
+        v(if layout == "modern-airy" { 3pt } else { effective-gap-entry })
       }
     }
 
     let experience-section = {
       for (i, entry) in experience.enumerate() {
-        cv-entry(
-          date: entry.date,
-          title: entry.title,
-          organization: entry.company,
-          location: entry.location,
-          content: entry.content,
-          lead: if i == 0 { section("Experience") } else { none },
-          marker: bullet,
+        render-entry(
+          entry.date,
+          entry.title,
+          entry.company,
+          entry.location,
+          entry.content,
+          if i == 0 { section("Experience") } else { none },
         )
       }
     }
@@ -189,52 +258,51 @@
         // The spacing reproduces that single block's to within a point
         // (tests/cv-layouts.test.ts compares them): tighter spacing made the
         // same content shorter and failed final-page density (jobsearch-plugin#15).
-        block(breakable: false, sticky: true, above: if i == 0 { gap-section } else { 1.2em }, below: 1.2 * size-body + 2.6pt)[
+        block(breakable: false, sticky: true, above: if i == 0 { effective-gap-section } else if layout == "modern-airy" { 8pt } else { 1.2em }, below: if layout == "modern-airy" { 3pt } else { 1.2 * size-body + 2.6pt })[
           #if i == 0 { section("Projects") }
-          #text(weight: "bold", size: size-entry)[#project.title]
+          #text(weight: "bold", size: effective-entry-size)[#project.title]
           #if project.url != "" [
             #h(5pt)
-            #text(size: size-meta, fill: accent)[#link(project.url)[Project link]]
+            #text(size: effective-meta-size, fill: accent)[#link(project.url)[Project link]]
           ]
         ]
         if project.description != "" {
-          block(above: 0pt, below: 1.2 * size-body + 2pt, text(size: size-body)[#project.description])
+          block(above: 0pt, below: if layout == "modern-airy" { 3pt } else { 1.2 * size-body + 2pt }, text(size: effective-body-size)[#project.description])
         }
         for highlight in project.highlights {
           block(breakable: false, above: 0pt, below: 1.2em + 1pt, grid(
             columns: (8pt, 1fr),
             gutter: 2pt,
-            text(size: size-body)[#bullet],
-            text(size: size-body)[#highlight],
+            text(size: effective-body-size)[#bullet],
+            text(size: effective-body-size)[#highlight],
           ))
         }
-        v(gap-entry)
+        v(if layout == "modern-airy" { 3pt } else { gap-entry })
       }
     }
 
     let education-section = {
       for (i, entry) in education.enumerate() {
-        cv-entry(
-          date: entry.year,
-          title: entry.degree,
-          organization: entry.institution,
-          location: "",
-          content: if entry.field != "" { ([#entry.field],) } else { () },
-          lead: if i == 0 { section("Education") } else { none },
-          marker: bullet,
+        render-entry(
+          entry.year,
+          entry.degree,
+          entry.institution,
+          "",
+          if entry.field != "" { ([#entry.field],) } else { () },
+          if i == 0 { section("Education") } else { none },
         )
       }
     }
 
     let certifications-section = {
       for (i, cert) in certifications.enumerate() {
-        block(breakable: false, above: if i == 0 { gap-section } else { 1.2em }, {
+        block(breakable: false, above: if i == 0 { effective-gap-section } else if layout == "modern-airy" { 4pt } else { 1.2em }, {
           if i == 0 { section("Certifications") }
           grid(
             columns: (1fr, auto),
             gutter: 8pt,
-            text(size: size-body)[#cert.name],
-            text(size: size-meta, fill: meta)[#cert.date],
+            text(size: effective-body-size)[#cert.name],
+            text(size: effective-meta-size, fill: effective-meta)[#cert.date],
           )
         })
         v(2pt)
@@ -271,9 +339,9 @@
     }
     for name in order { sections.at(name) }
     if interests.len() > 0 {
-      block(breakable: false, above: gap-section, {
+      block(breakable: false, above: effective-gap-section, {
         section("Interests")
-        text(size: size-body)[#interests.join(", ")]
+        text(size: effective-body-size)[#interests.join(", ")]
       })
     }
 

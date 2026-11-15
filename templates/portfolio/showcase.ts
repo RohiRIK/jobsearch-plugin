@@ -1,7 +1,8 @@
 import type { PortfolioTemplate, PortfolioData } from "../../src/portfolio-templates.js";
-import { esc, buildLinks, sectionWrapper } from "../../src/portfolio-templates.js";
+import { esc, buildLinks, sectionWrapper, safePortfolioHref } from "../../src/portfolio-templates.js";
 
 function projectCard(project: NonNullable<PortfolioData["profile"]["projects"]>[number]): string {
+  project = { ...project, link: safePortfolioHref(project.link ?? "") };
   const domains = (project.domains ?? []).map((domain) => `<span class="tag">${esc(domain)}</span>`).join("");
   const stack = (project.stack ?? []).map((item) => `<span class="stack">${esc(item)}</span>`).join("");
   const title = project.link
@@ -54,8 +55,10 @@ export const showcaseTemplate: PortfolioTemplate = {
       .map((category) => `<div class="skill-group"><h3>${esc(category.category)}</h3><p>${category.skills.map((skill) => esc(skill)).join(" · ")}</p></div>`)
       .join("");
     const experienceBody = experience
-      .map((entry) => `<article><h3>${esc(entry.title)} · ${esc(entry.company)}</h3><p class="meta">${esc(entry.startDate ?? "")}${entry.endDate ? ` – ${esc(entry.endDate)}` : " – present"}</p>${(entry.responsibilities ?? []).slice(0, 3).map((item) => `<p>${esc(item)}</p>`).join("")}</article>`)
+      .map((entry) => `<article><h3>${esc(entry.title)} · ${esc(entry.company)}</h3><p class="meta">${esc(entry.startDate ?? "")}${entry.endDate ? ` – ${esc(entry.endDate)}` : " – present"}</p>${(entry.responsibilities ?? []).map((item) => `<p>${esc(item)}</p>`).join("")}</article>`)
       .join("");
+    const educationBody = (profile.education ?? []).map(entry => `<article><h3>${esc(entry.degree)}</h3><p>${esc(entry.institution)}</p><p>${esc(entry.field)}</p><p class="meta">${esc([entry.startYear, entry.endYear].filter(Boolean).join("–"))}</p></article>`).join("");
+    const certificationBody = (profile.certifications ?? []).map(entry => `<article><h3>${esc(entry.name)}</h3>${entry.date ? `<p class="meta">${esc(entry.date)}</p>` : ""}</article>`).join("");
     const repoBody = repos
       .slice(0, maxRepos)
       .map((repo) => {
@@ -107,6 +110,8 @@ ${projectSection("Client work", projects, "work", populated, placeholders)}
 ${projectSection("Personal projects", projects, "personal", populated, placeholders)}
 ${sectionWrapper("Skills", skills.length > 0, skillsBody, "No skills recorded yet", populated, placeholders)}
 ${sectionWrapper("Experience", experience.length > 0, experienceBody, "No experience recorded yet", populated, placeholders)}
+${sectionWrapper("Education", (profile.education ?? []).length > 0, educationBody, "No education recorded yet", populated, placeholders)}
+${sectionWrapper("Certifications", (profile.certifications ?? []).length > 0, certificationBody, "No certifications recorded yet", populated, placeholders)}
 ${sectionWrapper("Open source", repos.length > 0, repoBody, "No GitHub data staged", populated, placeholders)}
 <footer>Generated from the approved candidate profile. Unreviewed and restricted projects never appear here.</footer>
 </main></body></html>`;

@@ -23,13 +23,14 @@ const REPO_DATA: PortfolioData = {
 };
 
 describe("portfolio template registry", () => {
-  test("listTemplates returns all 4 templates", () => {
+  test("listTemplates returns all 5 templates", () => {
     const names = listTemplates().map((t) => t.name);
     expect(names).toContain("modern");
     expect(names).toContain("minimal");
     expect(names).toContain("terminal");
     expect(names).toContain("showcase");
-    expect(names.length).toBe(4);
+    expect(names).toContain("about");
+    expect(names.length).toBe(5);
   });
 
   test("getTemplate returns the named template", () => {

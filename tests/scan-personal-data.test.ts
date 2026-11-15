@@ -39,6 +39,10 @@ describe("scanText — catches real contact details", () => {
 });
 
 describe("scanText — allows documented placeholders", () => {
+  test("the historical generic example LinkedIn fixture is exact, not a prefix exemption", () => {
+    expect(scanText("https://linkedin.com/in/example", FILE)).toEqual([]);
+    expect(scanText("https://linkedin.com/in/example-real-person", FILE)).toHaveLength(1);
+  });
   const clean = [
     "candidate@example.com",
     "first.last@mail.example.co.uk",

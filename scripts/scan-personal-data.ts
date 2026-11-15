@@ -85,6 +85,8 @@ export const ALLOWED = [
   /your\.email@/i,
   /candidate@/i,
   /linkedin\.com\/in\/(your-profile|username|placeholder)/i,
+  // Exact synthetic Example Person fixture already present in repository history.
+  /linkedin\.com\/in\/example$/i,
 ];
 
 /**

@@ -6,10 +6,18 @@
 //   bun run scripts/profile/build-profile.ts
 //   bun run scripts/profile/build-profile.ts --linkedin --cv cv/main_example.tex
 //   bun run scripts/profile/build-profile.ts --help
+//
+// Hardening (overwrite guard):
+//   If data/profile.json already exists (enriched master), build-profile REFUSES
+//   to overwrite it unless --replace is given. With --replace, a timestamped
+//   backup of the original is written BEFORE merge overwrites. --backup is a
+//   reviewed opt-in that forces backup creation even when refusing.
 
 import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, constants } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
-import { CODE_ROOT } from "../../src/paths.js";
+import { CODE_ROOT, workspaceRoot } from "../../src/paths.js";
 
 // ─── Configuration ────────────────────────────────────────────────────────
 
@@ -32,6 +40,8 @@ FLAGS
   --skip-github       Skip GitHub fetch
   --skip-blog         Skip blog fetch
   --skip-sync         Skip CLAUDE.md sync
+  --replace           Allow overwriting an existing data/profile.json (creates backup first)
+  --backup            Create a backup of existing profile.json even when refusing overwrite
 
 PIPELINE
   1. fetch-github    → data/staging/github.json
@@ -59,6 +69,8 @@ interface Flags {
   "skip-github"?: boolean;
   "skip-blog"?: boolean;
   "skip-sync"?: boolean;
+  replace?: boolean;
+  backup?: boolean;
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -72,6 +84,8 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--skip-github") flags["skip-github"] = true;
     else if (a === "--skip-blog") flags["skip-blog"] = true;
     else if (a === "--skip-sync") flags["skip-sync"] = true;
+    else if (a === "--replace") flags.replace = true;
+    else if (a === "--backup") flags.backup = true;
   }
   return flags;
 }
@@ -121,6 +135,15 @@ function runStep(name: string, cmd: string[], skip: boolean): StepResult {
 
 // ─── Main ─────────────────────────────────────────────────────────────────
 
+function snapshotProfile(path: string): string {
+  const snapshot = `${path}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
+  copyFileSync(path, snapshot, constants.COPYFILE_EXCL);
+  // Retain the first recovery anchor; every invocation also has a unique copy.
+  try { copyFileSync(path, path + ".backup", constants.COPYFILE_EXCL); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  return snapshot;
+}
+
 export function main(): number {
   const flags = parseFlags(process.argv.slice(2));
 
@@ -132,6 +155,26 @@ export function main(): number {
   if (flags.version || flags.v) {
     process.stdout.write(`build-profile version ${VERSION}\n`);
     return 0;
+  }
+
+  // ── Overwrite guard (MUST run before merge) ──────────────────────────
+  // Resolve workspace at runtime so JOB_SEARCH_HOME is honored.
+  const profilePath = join(workspaceRoot(), "data", "profile.json");
+
+  let backupPath: string | undefined;
+  if (existsSync(profilePath) && (flags.replace || flags.backup)) {
+    try { backupPath = snapshotProfile(profilePath); }
+    catch (error) {
+      process.stderr.write(JSON.stringify({ error: `Profile backup failed; original retained: ${String(error)}`, code: "BACKUP_FAILED" }) + "\n");
+      return 1;
+    }
+  }
+  if (existsSync(profilePath) && !flags.replace) {
+    process.stderr.write(JSON.stringify({
+      error: `Profile ${profilePath} already exists. Use --replace to overwrite (a unique backup is created first).`,
+      code: "PROFILE_EXISTS", ...(backupPath ? { backup: backupPath } : {}),
+    }) + "\n");
+    return 1;
   }
 
   const results: StepResult[] = [];
@@ -168,14 +211,22 @@ export function main(): number {
     runStep("sync-claude", ["scripts/profile/sync-claude.ts"], flags["skip-sync"] ?? false),
   );
 
-  // Summary
+  // Guard: if merge reported an error, abort WITHOUT overwriting data/profile.json
+  const mergeResult = results.find((r) => r.step === "merge");
+  if (mergeResult?.status === "error") {
+    process.stderr.write(JSON.stringify({
+      error: `Profile merge failed: ${mergeResult.error}`,
+      code: "MERGE_ERROR",
+    }) + "\n");
+    return 1;
+  }
+
   const summary = {
     steps: results,
     success: results.every((r) => r.status !== "error"),
     profile: "data/profile.json",
     claudeMd: "CLAUDE.md",
   };
-
   process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
 
   const hasError = results.some((r) => r.status === "error");

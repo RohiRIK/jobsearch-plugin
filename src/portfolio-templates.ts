@@ -34,13 +34,22 @@ export function esc(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
+/** Preserve valid literal destinations, but never put executable/local schemes in HTML. */
+export function safePortfolioHref(value: string): string {
+  if (!/^(https?:\/\/|mailto:)/i.test(value) || /[\u0000-\u0020]/.test(value)) return "";
+  try {
+    const parsed = new URL(value);
+    return ["https:", "http:", "mailto:"].includes(parsed.protocol) ? value : "";
+  } catch { return ""; }
+}
+
 export function buildLinks(id: Profile["identity"]): { label: string; href: string }[] {
   const links: { label: string; href: string }[] = [];
   if (id.github) links.push({ label: "GitHub", href: id.github });
   if (id.linkedin) links.push({ label: "LinkedIn", href: id.linkedin });
   if (id.blog) links.push({ label: "Blog", href: id.blog });
   if (id.email) links.push({ label: "Email", href: `mailto:${id.email}` });
-  return links;
+  return links.filter(link => safePortfolioHref(link.href));
 }
 
 export function sectionWrapper(
@@ -61,12 +70,14 @@ import { modernTemplate } from "../templates/portfolio/modern.js";
 import { minimalTemplate } from "../templates/portfolio/minimal.js";
 import { terminalTemplate } from "../templates/portfolio/terminal.js";
 import { showcaseTemplate } from "../templates/portfolio/showcase.js";
+import { aboutTemplate } from "../templates/portfolio/about.js";
 
 export const TEMPLATES: Record<string, PortfolioTemplate> = {
   modern: modernTemplate,
   minimal: minimalTemplate,
   terminal: terminalTemplate,
   showcase: showcaseTemplate,
+  about: aboutTemplate,
 };
 
 export const DEFAULT_TEMPLATE = "showcase";

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 2.6.0 - 2026-11-15
+
+### Added
+- A distinct `modern-airy` CV layout with structural section/divider spacing and readable supporting text, preserving supplied education, certifications and selected projects.
+- A self-contained `about` portfolio template with consistent purple outline icons, separate professional/personal projects and explicit credentials.
+- `jobsearch portfolio --format html|pdf`: confirmed writes through the CLI/MCP command table. PDF export uses a dedicated sandboxed Chromium profile, disables document scripts and remote resource loads, verifies required profile text and blank pages with Poppler, and atomically retains the previous output on failure. Every final page still requires visual inspection.
+- A maintained `DocumentPreservation.md` CV workflow covering approved revision decisions, profile safety, renderer-level link policies, evidence-backed wording and accepted upload formats.
+
+### Fixed
+- Application rendering exposes `--project-links on|off` through the public CLI and MCP contract; suppressing links leaves stored URLs unchanged. Cover letters honor the explicit header-link selection used by the CV.
+- Profile regeneration refuses an existing master without `--replace`, creates unique immutable recovery snapshots before replacement, and never overwrites the first `.backup` recovery anchor. Regression coverage keeps an absent office-day limit unknown instead of inventing zero.
+- Approved modern-airy font sizes are verified in compiled PDF text rather than merely checking token declarations; existing layout margins and historical project-spacing coverage remain intact. Paragraph spacing is conditional on a compatible Typst version, retaining the legacy compiler fallback.
+- The showcase portfolio no longer omits education/certifications or silently truncates experience to three responsibilities.
+- Portfolio generation excludes explicitly restricted/unreviewed projects consistently across templates without modifying the source profile.
+
 ## 2.5.0 - 2026-11-13
 
 ### Added

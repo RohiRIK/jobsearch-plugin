@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { CV_LAYOUTS, recommendCvLayout } from "../src/cv-options.js";
 
 describe("CV layout catalog", () => {
-  test("contains ten concrete layout options", () => {
-    expect(CV_LAYOUTS).toHaveLength(10);
-    expect(new Set(CV_LAYOUTS.map((option) => option.id)).size).toBe(10);
+  test("contains eleven concrete layout options", () => {
+    expect(CV_LAYOUTS).toHaveLength(11);
+    expect(new Set(CV_LAYOUTS.map((option) => option.id)).size).toBe(11);
   });
 
   test("recommends a technical layout for a technical engineering role", () => {
