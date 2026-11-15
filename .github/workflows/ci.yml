@@ -26,4 +26,10 @@ jobs:
         run: bunx tsc --noEmit
 
       - name: Test
-        run: bun test tests/
+        env:
+          # Chromium's documented SUID helper keeps sandboxing on under Ubuntu's
+          # restricted user namespaces; never use --no-sandbox or disable AppArmor.
+          CHROME_DEVEL_SANDBOX: /opt/google/chrome/chrome-sandbox
+        run: |
+          test -u "$CHROME_DEVEL_SANDBOX"
+          bun test tests/
