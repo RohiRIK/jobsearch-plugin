@@ -1,9 +1,9 @@
 {
-  "sourceHash": "06aa0dbbfdd194f8f63d7106778200f89c0d2cc64c045888305667f6642a8e38",
-  "bun": "1.4.4",
-  "bytes": 1066269,
+  "sourceHash": "c846a153d0a4b9bf55c7cf8aefbb7f280f1e24614ac8b715dfb75a634e55c8ff",
+  "bun": "1.4.0",
+  "bytes": 1150234,
   "files": {
-    "dist/jobsearch.js": "6167372203de65ae25bbc485febf099137684b4029f166fac662d10261baff06",
+    "dist/jobsearch.js": "66e844ce853305d62e599440d8e7ce51da5c51f75347d670dbae9a72055ab261",
     "dist/portals/alljobs.js": "c6f2f8710e448f4413e60da969658fd62d2f76fc830835a9e28b42942715b707",
     "dist/portals/arbeitnow.js": "cbfa9813e30a1947a394fee458bd2a9ec8a1823349cb013254a9a088127826cc",
     "dist/portals/drushim.js": "3ce6e3baa01070e673a19b1811df69f0de31d7483dda3aa190d42ae110150aba",
@@ -11,7 +11,7 @@
     "dist/portals/remoteok.js": "d3525081c93da84bab488b1cdd8dcdaad3a9ccbed729a3731fe7399847496e22",
     "dist/portals/remotive.js": "f6c05906d4dc5a19de79e3bba1d86e06c0bf20e6660d75b5fb324756b6149f8a",
     "dist/portals/wwr.js": "950fefea39524705dc20c0a78187c4ca11a236c52b3377acaf4c17ca60408982",
-    "dist/tools.js": "a45a680b0169d1b9a06c21c5e3bb791e177e0d86a42cce95ee9a1e9b3014bb93",
+    "dist/tools.js": "c6b519037c85125c19ab0280eb8eb144b34d50ec1fd1bbe48b3d081ad389f2c4",
     "templates/cover/casual/meta.json": "ad06f809d758e2fff29d281ee19519c3b4a7fd6449c27ed07c9b2d12ae53df1a",
     "templates/cover/casual/template.typ": "4781456609c38c7e1f249e80063471f33ca4f7856913a1800b5f29701973aa12",
     "templates/cover/classic/meta.json": "257b0e6103a81e25e6730bce21680f84ae2861a3db66d5cdbc438fb053f4854f",
@@ -23,7 +23,7 @@
     "templates/cv/banking/template.typ": "3042a9b069ad1a17ce85a6e0805366271a129b2429252b4b1d966d3ba659e1d0",
     "templates/cv/creative/meta.json": "e7a56c70f5a79e623b03b3f000195e82f450c4b389d208ca02bec190479ee507",
     "templates/cv/modern/meta.json": "7c27e9431c42a03cb88744f65bfb416b97f88379f167f44f8403b7ad7049d8a4",
-    "templates/cv/modern/template.typ": "834339f0ae5c03b3db628735ea30a1027aaeee29a8bfe43aa899d9c1c8e01545",
+    "templates/cv/modern/template.typ": "56fa4aa95de003ef0bf6bc1f7d6940e0b0c190cc4072f6a16c6457c74a8c053c",
     "templates/design-system.typ": "15d4f11d33d11e79dd8ff397ac0e2713a0df46efc4929675c5cdd95b7ff92e11",
     "data/profile.json.example": "e143ab6199bc126466b3b672cd360aee96e37e72e65dbe481b97260de0a8c95d"
   }

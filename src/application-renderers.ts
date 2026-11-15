@@ -68,6 +68,8 @@ export function renderCvTypst(input: {
   links?: ProfileLink[];
   /** Print profile.interests as the last line (default true when the profile has any). */
   interests?: boolean;
+  /** Include portfolio project URLs (default true). When false, project links are suppressed. */
+  projectLinks?: boolean;
 }): string {
   const { profile, draft, outDir } = input;
   const template = input.template ?? "modern";
@@ -102,11 +104,12 @@ export function renderCvTypst(input: {
   });
   // Portfolio projects, resolved by slug so the name and link stay owned by
   // data/profile.json. The draft supplies only the evidence-backed prose.
+  const projectLinksEnabled = input.projectLinks !== false;
   const projects = draft.cv.projects.map((entry) => {
     const source = profile.projects?.find((item) => item.slug === entry.slug);
     if (!source) throw new Error(`No portfolio project with slug ${entry.slug}`);
     const highlights = tuple(entry.highlights.map((item) => quoted(item.text)), "      ");
-    return `(title: ${quoted(source.name)}, url: ${quoted(source.link ?? "")}, description: ${quoted(entry.description.text)}, highlights: ${highlights})`;
+    return `(title: ${quoted(source.name)}, url: ${quoted(projectLinksEnabled ? source.link ?? "" : "")}, description: ${quoted(entry.description.text)}, highlights: ${highlights})`;
   });
   // Section order is a market convention (src/market-profiles.ts), not a style
   // choice. German-speaking markets expect education before work experience.
@@ -160,6 +163,8 @@ export function renderCoverLetterTypst(input: {
   outDir: string;
   template?: string;
   date?: string;
+  /** Profile links to print; default every link the profile has (see PROFILE_LINKS). */
+  links?: ProfileLink[];
 }): string {
   const { profile, draft, outDir } = input;
   const template = input.template ?? "modern";
@@ -167,6 +172,7 @@ export function renderCoverLetterTypst(input: {
   const names = candidateNames(profile);
   const templateImport = importPath(outDir, `${CODE_ROOT}/templates/cover/${template}/template.typ`);
   const paragraphs = draft.coverLetter.paragraphs.map((paragraph) => quoted(paragraph.text));
+  const clLinks = selectedLinks(profile, input.links).included;
 
   return `// Evidence-grounded application draft. Validate with: bun run application review
 #import "${typstString(templateImport)}": cover-letter
@@ -175,8 +181,8 @@ export function renderCoverLetterTypst(input: {
   name: ${quoted(names.full)},
   email: ${quoted(identity.email ?? "")},
   phone: ${quoted(identity.phone ?? "")},
-  linkedin: ${quoted(identity.linkedin ?? "")},
-  website: ${quoted(identity.blog ?? "")},
+  linkedin: ${quoted(clLinks.includes("linkedin") ? identity.linkedin ?? "" : "")},
+  website: ${quoted(clLinks.includes("blog") ? identity.blog ?? "" : "")},
   date: ${quoted(displayDate(input.date ?? new Date().toISOString().slice(0, 10)))},
   recipient: ${quoted(draft.coverLetter.recipient)},
   company: ${quoted(draft.company)},

@@ -10,6 +10,7 @@ import { TOOL_MAP } from "../../src/jobsearch/toolmap.js";
 
 type Main = () => number | Promise<number>;
 export const LOADERS: Record<string, () => Promise<{ main: Main }>> = {
+  "scripts/generate/portfolio.ts": () => import("../generate/portfolio.js"),
   "scripts/generate/application.ts": () => import("../generate/application.js"),
   "scripts/reevaluate.ts": () => import("../reevaluate.js"),
   "scripts/pipeline/cli.ts": () => import("../pipeline/cli.js"),

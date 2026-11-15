@@ -59,6 +59,12 @@ A saved skill label is not evidence of an employer deployment or daily use.
 
 Then work the chain below in order.
 
+For revisions and a CV/cover/portfolio package, first follow
+`DocumentPreservation.md`: retain approved content/layout decisions, protect the
+master profile, select link visibility in the renderer and deliver formats the
+portal actually accepts. It owns the content-preservation and portfolio-PDF QA
+checklist; a machine gate alone does not satisfy it.
+
 ## 1. Read the market before writing anything
 
 Conventions differ enough to change the document, not just its wording:
@@ -76,7 +82,8 @@ language beats the market default.
 
 Triage already chose the CV and cover templates (`templates.cv`,
 `templates.cover`; `jobsearch run select-template --job <file>` shows the full
-ranking). The brief from step 3 ranks ten concrete layout variants. Present the
+ranking). The brief from step 3 ranks the available concrete layout variants. Reuse an
+already approved layout; for an initial choice present the
 top five with names, one-line reasons, and whether each supports an avatar. When
 the user wants visual comparison in a checkout, run
 `bun run cv:previews --draft <draft> --job <posting>` and show the PNGs. Ask the
@@ -175,3 +182,4 @@ a tracker entry or submit.
 | `<assistant>/05-cv-templates.md`, `<assistant>/06-cover-letter-templates.md` | LaTeX path, or tailoring guidance |
 | `<assistant>/07-interview-prep.md` | Interview prep after an application |
 | `EvidenceGroundedPilot.md` | Source ledger, pilot selection, visual QA |
+| `DocumentPreservation.md` | Revisions, approved typography, no silent content cuts, link policy, portfolio PDF |

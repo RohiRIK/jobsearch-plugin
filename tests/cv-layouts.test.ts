@@ -268,7 +268,9 @@ describe("project spacing", () => {
         expect(match).not.toBeNull();
         return Number(match![1]);
       };
-      for (const { id: layout } of CV_LAYOUTS) {
+      // This regression protects the ten layouts that existed in 2.3.0.
+      // modern-airy deliberately uses its separately tested tighter project rhythm.
+      for (const { id: layout } of CV_LAYOUTS.filter(option => option.id !== "modern-airy")) {
         const drift = Math.abs((await educationTop(join(templateDir, "template.typ"), layout)) - (await educationTop(reference, layout)));
         // A constant 1pt at the section end remains; the per-project rhythm is identical.
         expect(drift, layout).toBeLessThan(1.5);

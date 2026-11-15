@@ -60,6 +60,22 @@ Everything runs through `scripts/jobsearch`: one compact JSON envelope per call,
 
 ## Developing
 
+### Approved document revisions and portfolio uploads
+
+The selectable `modern-airy` CV layout provides structural breathing room while
+preserving supplied content. Use `render --links linkedin --project-links off`
+for a LinkedIn-only application without project hyperlinks; stored profile URLs
+remain intact. The cover letter uses the same explicit header-link selection.
+
+`jobsearch portfolio --template about --format html --yes` creates a self-contained,
+responsive portfolio with purple outline icons. Use `--format pdf` for portals
+that reject HTML. PDF export needs a sandboxed Chromium/Chrome installation and
+Poppler; no browser is downloaded. Document scripts and network resource loads
+are blocked, so use embedded assets. The exporter verifies required text before
+replacing an existing PDF. Its receipt still requires inspection of every final
+page; it is not a substitute for CV/cover shipping gates. See the CV skill's
+`DocumentPreservation.md` for the repeatable revision and delivery contract.
+
 Edit the sources in the repository root (`src/`, `scripts/`, `templates/`), then `bun run plugin:build` — `dist/` and `templates/` here are generated and committed, and `bun run plugin:check` (part of `bun run gates`) fails when they are stale. Validate with:
 
 ```bash

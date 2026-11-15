@@ -23,7 +23,8 @@ export interface ToolDef {
 }
 
 export const TOOL_MAP: Record<string, ToolDef> = {
-  application: { source: "scripts/generate/application.ts", summary: "prepare | review | render an evidence-grounded application", flags: ["cl-template","company","compile","cv-template","date","draft","fit","force","interests","job","language","layout","links","market","profile","role"] },
+  portfolio: { source: "scripts/generate/portfolio.ts", writes: true, summary: "self-contained portfolio HTML or verified PDF", flags: ["template", "format", "out", "profile", "max-repos", "list-templates"], short: ["t"] },
+  application: { source: "scripts/generate/application.ts", summary: "prepare | review | render an evidence-grounded application", flags: ["cl-template","company","compile","cv-template","date","draft","fit","force","interests","job","language","layout","links","project-links","market","profile","role"] },
   reevaluate: { source: "scripts/reevaluate.ts", summary: "the shipping gate (full report)", flags: ["allow-missing-ats","company","file","market","profile","role","type"] },
   pipeline: { source: "scripts/pipeline/cli.ts", writes: true, summary: "orchestrated pipeline steps", flags: ["resume","skip-github","job","title","company","query","portals"] },
   "pipeline:scrape": { source: "scripts/pipeline/cli.ts", prefix: ["scrape"], summary: "portal scrape (updates seen-jobs)", flags: ["resume","skip-github","job","title","company","query","portals"] },

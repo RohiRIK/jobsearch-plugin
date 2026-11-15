@@ -201,6 +201,14 @@ async function runReview(values: Values): Promise<CommandResult> {
   return { data: review, exit: review.pass ? EXIT.ok : EXIT.verdictFailed };
 }
 
+async function runPortfolio(values: Values): Promise<CommandResult> {
+  const preview = confirmWrite(values, "portfolio", "Generate a portfolio document from the selected profile");
+  if (preview) return { data: { dryRun: true, format: str(values, "format") ?? "html", out: str(values, "out"), template: str(values, "template") ?? "about" }, exit: EXIT.dryRun };
+  const run = await runTool("portfolio", ["--template", str(values, "template") ?? "about", "--format", str(values, "format") ?? "html", ...passThrough(values, ["profile", "out", "max-repos"])], { timeoutMs: 120_000 });
+  if (run.code !== 0 || run.json === undefined) throw toolFailure("portfolio", run);
+  return { data: run.json };
+}
+
 async function runRender(values: Values): Promise<CommandResult> {
   const reviewArgs = passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language"]);
   const preview = confirmWrite(values, "render", `jobsearch render --draft ${JSON.stringify(str(values, "draft"))} --job ${JSON.stringify(str(values, "job"))}`);
@@ -209,7 +217,7 @@ async function runRender(values: Values): Promise<CommandResult> {
     if (run.json === undefined) throw toolFailure("application", run);
     return { data: { dryRun: true, review: run.json, wouldWrite: "convention-named Typst CV + cover letter under <workspace>/assets/applications/" }, exit: EXIT.dryRun };
   }
-  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "interests", "compile", "fit", "force"])]);
+  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "project-links", "interests", "compile", "fit", "force"])]);
   if (run.json !== undefined) {
     const out = run.json as { written?: boolean };
     return { data: out, exit: run.code === 0 ? EXIT.ok : EXIT.verdictFailed };
@@ -412,6 +420,20 @@ export const CORE_COMMANDS: Record<string, CommandSpec> = {
     },
     run: runReview,
   },
+  portfolio: {
+    summary: "Generate a self-contained HTML portfolio or upload-compatible PDF; inspect every final PDF page",
+    mutation: true,
+    output: "json",
+    flags: {
+      profile: PROFILE_FLAG,
+      template: { type: "string", default: "about", description: "Portfolio design: about, showcase, modern, minimal or terminal" },
+      format: { type: "string", enum: ["html", "pdf"], default: "html", description: "PDF requires Chromium/Chrome and Poppler" },
+      out: { type: "string", description: "Output document path" },
+      "max-repos": { type: "string", description: "Maximum staged repository entries (never truncates profile projects)" },
+      ...MUTATION_FLAGS,
+    },
+    run: runPortfolio,
+  },
   render: {
     summary: "Review, then write the convention-named Typst CV + cover letter",
     mutation: true,
@@ -424,6 +446,7 @@ export const CORE_COMMANDS: Record<string, CommandSpec> = {
       "cl-template": { type: "string", description: "Typst cover template", default: "modern" },
       date: { type: "string", description: "Output date YYYY-MM-DD (default today)" },
       links: { type: "string", description: "Profile links on the CV, comma-separated: linkedin,github,blog (default: all the profile has)" },
+      "project-links": { type: "string", description: "Include project hyperlinks without changing stored profile URLs", enum: ["on", "off"] },
       interests: { type: "string", description: "Print the profile's interests as the CV's last line", enum: ["show", "omit"] },
       fit: { type: "boolean", description: "If the CV's last page is nearly empty or off budget, test the other layouts and report which fit (never switches)" },
       compile: { type: "boolean", description: "Compile both sources after writing" },

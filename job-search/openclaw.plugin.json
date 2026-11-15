@@ -2,7 +2,7 @@
   "id": "jobsearch",
   "name": "jobsearch",
   "description": "Evidence-grounded job-search workflow: onboard a profile, research and score roles, draft market-aware CVs and cover letters that pass a machine gate, and record outcomes.",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "skills": [
     "./skills"
   ],

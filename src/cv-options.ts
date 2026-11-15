@@ -31,6 +31,7 @@ export const CV_LAYOUTS: CvLayoutOption[] = [
   { id: "classic", name: "Classic", description: "Navy uppercase headings over thin rules, no shading; conservative.", bestFor: ["finance", "legal", "government", "academic"], avoidFor: ["startup", "creative"], density: "roomy", accent: "navy", supportsAvatar: false },
   { id: "project-first", name: "Project First", description: "Modern styling with portfolio projects directly under the summary.", bestFor: ["portfolio", "product", "research", "consulting"], avoidFor: ["traditional finance"], density: "balanced", accent: "indigo", supportsAvatar: true },
   { id: "creative", name: "Creative", description: "Purple accent and roomier line spacing while staying ATS-readable.", bestFor: ["design", "marketing", "media", "content"], avoidFor: ["legal", "finance"], density: "roomy", accent: "purple", supportsAvatar: true },
+  { id: "modern-airy", name: "Modern Airy", description: "Liberation Sans with explicit section and divider clearance for a readable ATS layout.", bestFor: ["technology", "product", "data", "engineering"], avoidFor: [], density: "balanced", accent: "blue", supportsAvatar: true },
   { id: "resume-compact", name: "Resume Compact", description: "Tightest margins, 9 pt body and a smaller name for maximum density.", bestFor: ["engineering", "security", "operations"], avoidFor: ["design", "academic"], density: "compact", accent: "teal", supportsAvatar: false },
 ];
 

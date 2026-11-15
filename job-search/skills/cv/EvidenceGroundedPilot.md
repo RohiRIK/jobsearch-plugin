@@ -74,6 +74,11 @@ Review the plan before drafting. The host LLM may improve the wording, but it ma
 
 ## 5. Draft, review, and render
 
+Apply `DocumentPreservation.md` before revisions: carry forward the owner's
+selected layout and required sections/projects, and keep link suppression in
+renderer options rather than deleting source facts. The same reference covers
+the optional upload-compatible portfolio and final preservation checks.
+
 1. Create the `ApplicationDraft` JSON with evidence IDs for every candidate claim and preserve the prepared application plan.
 2. Keep known gaps out of the CV. They can appear only as candid, explicitly declared cover-letter gaps.
 3. Pass the evidence review before rendering:

@@ -40,6 +40,7 @@ data/import-errors.log
 # Personal pipeline data (generated from your real profile/applications — never commit)
 data/profile.json
 data/profile.json.bak
+data/profile.json.backup*
 data/staging/
 data/reasoning.json
 data/seen-jobs.json
