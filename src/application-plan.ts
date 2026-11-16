@@ -27,8 +27,10 @@ export interface ApplicationPlan {
   roleThesis: string;
   /** Top posting requirements the candidate's evidence supports. */
   mustProve: string[];
-  /** Top posting requirements the evidence does not support: disclose or bridge, never prove. */
+  /** Top posting requirements the evidence does not support: disclose or bridge, never prove. Must-haves first. */
   openGaps: string[];
+  /** Severity of each open gap: a missing must-have outweighs a missing nice-to-have. */
+  gapDetails: Array<{ requirement: string; severity: "must-have" | "nice-to-have" }>;
   evidencePriorities: EvidencePriority[];
   projectDecisions: ProjectDecision[];
   sectionOrder: Array<"summary" | "experience" | "projects" | "education" | "certifications">;
@@ -78,10 +80,22 @@ export function buildApplicationPlan(input: {
   // A requirement the scorer lists as a gap is not something the application
   // can prove. Putting it in mustProve, and so in the thesis, told the writer to
   // demonstrate Rails mastery with no Rails evidence (issue #12).
+  //
+  // Required and nice-to-have skills arrive in posting rank order, so
+  // mustProve[0] is the posting's top supported requirement, not whichever
+  // term came first in the vocabulary (AUDIT.md F1). A missed nice-to-have is
+  // a gap too: before, Kubernetes/Terraform landed in mustProve with no
+  // evidence and the writer padded around them (AUDIT.md F2).
   const gapSet = new Set(input.score.gaps.map((gap) => gap.toLowerCase()));
+  const niceGapSet = new Set((input.score.niceGaps ?? []).map((gap) => gap.toLowerCase()));
   const isGap = (skill: string) => gapSet.has(skill.toLowerCase());
-  const mustProve = [...required, ...nice].filter((skill) => !isGap(skill)).map(titleCase);
-  const openGaps = [...required, ...nice].filter(isGap).map(titleCase);
+  const isNiceGap = (skill: string) => niceGapSet.has(skill.toLowerCase());
+  const mustProve = [...required.filter((skill) => !isGap(skill)), ...nice.filter((skill) => !isNiceGap(skill))].map(titleCase);
+  const gapDetails: ApplicationPlan["gapDetails"] = [
+    ...required.filter(isGap).map((skill) => ({ requirement: titleCase(skill), severity: "must-have" as const })),
+    ...nice.filter(isNiceGap).map((skill) => ({ requirement: titleCase(skill), severity: "nice-to-have" as const })),
+  ];
+  const openGaps = gapDetails.map((gap) => gap.requirement);
   const rankedExperience = rankExperience(input.profile, input.jd);
   const projectRouting = `${input.role}\n${input.posting}`;
   const projects = input.profile.projects ?? [];
@@ -168,6 +182,7 @@ export function buildApplicationPlan(input: {
     roleThesis,
     mustProve,
     openGaps,
+    gapDetails,
     evidencePriorities: priorities,
     projectDecisions,
     sectionOrder,

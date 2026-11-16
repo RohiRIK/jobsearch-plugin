@@ -98,6 +98,7 @@ export function triagePosting(
       breakdown: match.breakdown,
       matched: match.matched,
       gaps: match.gaps,
+      niceGaps: match.niceGaps,
       neutral: match.neutral,
       eligibility: match.eligibility,
     },

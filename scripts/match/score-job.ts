@@ -33,7 +33,14 @@ export interface EligibilityResult {
 export interface MatchResult {
   score: number;
   breakdown: ScoreBreakdown;
+  /** Must-have misses (skills, experience, sector, location, language). */
   gaps: string[];
+  /**
+   * Nice-to-have skills the profile does not support. Lower severity than
+   * `gaps`: they cost no score, but the plan must not tell the writer to prove
+   * them (AUDIT.md F2). In rank order.
+   */
+  niceGaps: string[];
   matched: string[];
   neutral: string[];
   skillEvidence: SkillEvidence[];
@@ -64,6 +71,7 @@ function sectorMatchesPosting(sector: string, jdTitleAndCompany: string): boolea
 
 export function scoreJob(jd: ParsedJD, profile: Profile): MatchResult {
   const gaps: string[] = [];
+  const niceGaps: string[] = [];
   const matched: string[] = [];
   const neutral: string[] = [];
   const skillEvidence: SkillEvidence[] = [];
@@ -74,6 +82,7 @@ export function scoreJob(jd: ParsedJD, profile: Profile): MatchResult {
   if (allRequired.length === 0) {
     skills = 20;
     neutral.push("skills: JD lists no recognizable skills — neutral 20/40");
+    niceGaps.push(...jd.niceToHaveSkills.filter((requirement) => findProfileSkillEvidence(requirement, profileSkills) === null));
   } else {
     const requiredEvidence = allRequired.map((requirement) => findProfileSkillEvidence(requirement, profileSkills));
     const hits = allRequired.filter((_, index) => requiredEvidence[index] !== null);
@@ -87,6 +96,7 @@ export function scoreJob(jd: ParsedJD, profile: Profile): MatchResult {
     skills = Math.round((hits.length / allRequired.length) * 36 + Math.min(niceHits.length, 4));
     matched.push(...hits, ...niceHits.map((s) => `${s} (nice-to-have)`));
     gaps.push(...misses);
+    niceGaps.push(...jd.niceToHaveSkills.filter((_, index) => niceEvidence[index] === null));
   }
 
   let experience: number;
@@ -194,7 +204,7 @@ export function scoreJob(jd: ParsedJD, profile: Profile): MatchResult {
 
   const breakdown: ScoreBreakdown = { skills, experience, sector, location, language };
   const score = skills + experience + sector + location + language;
-  return { score, breakdown, gaps, matched, neutral, skillEvidence, eligibility, jd };
+  return { score, breakdown, gaps, niceGaps, matched, neutral, skillEvidence, eligibility, jd };
 }
 
 const HELP = `score-job — Score a job against the candidate profile (0-100)
@@ -218,7 +228,9 @@ SCORING
   score is honest about what it could not evaluate.
 
 OUTPUT
-  JSON to stdout: { score, breakdown, gaps, matched, neutral, skillEvidence, eligibility, jd }
+  JSON to stdout: { score, breakdown, gaps, niceGaps, matched, neutral, skillEvidence, eligibility, jd }
+  gaps are must-have misses; niceGaps are unsupported nice-to-have skills
+  (lower severity: no score penalty, but never something to claim).
   eligibility is separate from capability score: eligible, ineligible, or review,
   with explicit work-preference constraints when the JD states them.
   Errors to stderr as JSON { error, code }

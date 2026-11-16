@@ -2,8 +2,40 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { readStdin } from "../../src/stdin.js";
-import { SKILL_TERMS } from "../../src/skill-vocabulary.js";
+import { GENERIC_SKILL_TERMS, SKILL_TERMS, aliasGroupFor } from "../../src/skill-vocabulary.js";
 export { SKILL_TERMS } from "../../src/skill-vocabulary.js";
+
+export const RequirementSection = z.enum(["title", "required", "responsibilities", "other", "nice-to-have"]);
+export type RequirementSection = z.infer<typeof RequirementSection>;
+
+/**
+ * One recognised requirement, ranked by where the posting puts it. Rank 1 is
+ * the most important: the section it sits in (title > requirements >
+ * responsibilities > other text > nice-to-have) decides first, then its first
+ * position in the ad. Broad umbrella terms ("cloud", "security") get half
+ * weight so they rank below specific requirements in the same section.
+ */
+export const RankedRequirement = z.object({
+  term: z.string(),
+  rank: z.number().int().min(1),
+  weight: z.number().min(0).max(1),
+  section: RequirementSection,
+  required: z.boolean(),
+  generic: z.boolean(),
+  /** Character offset of the occurrence that set the section; -1 when only the title override names it. */
+  position: z.number().int().min(-1),
+  /** The posting line the requirement came from, trimmed. Untrusted posting text. */
+  quote: z.string(),
+});
+export type RankedRequirement = z.infer<typeof RankedRequirement>;
+
+export const SECTION_WEIGHT: Record<RequirementSection, number> = {
+  title: 1,
+  required: 0.8,
+  responsibilities: 0.6,
+  other: 0.5,
+  "nice-to-have": 0.3,
+};
 
 export const ParsedJD = z.object({
   title: z.string().optional(),
@@ -15,8 +47,12 @@ export const ParsedJD = z.object({
   /** An explicit current-residency constraint; null when the JD does not state one. */
   residencyRequirement: z.string().nullable().default(null),
   yearsExperience: z.number().nullable(),
+  /** Required skills in rank order (most important first), not vocabulary order. */
   requiredSkills: z.array(z.string()),
+  /** Nice-to-have skills in rank order. */
   niceToHaveSkills: z.array(z.string()),
+  /** Every recognised requirement with rank, weight, section and source line. Older parsed JSON has none. */
+  requirements: z.array(RankedRequirement).default([]),
   /** Explicit language requirements only; benefit copy does not create a gap. */
   niceToHaveLanguages: z.array(z.string()).default([]),
   languages: z.array(z.string()),
@@ -38,6 +74,9 @@ const LANGUAGE_TERMS: Record<string, RegExp> = {
 const NICE_SECTION = /nice.to.have|advantages?|preferred|bonus|plus\b|would be a plus|יתרון/i;
 const REQUIRED_SECTION = /requirements?|qualifications?|must.have|what you.?ll need|what you.?ll bring|we expect|דרישות/i;
 const NON_REQUIREMENT_SECTION = /what we offer|benefits?|about (?:the|this)|who we are|equal opportunit/i;
+const RESPONSIBILITIES_SECTION = /responsibilit|what you.?ll do|what you will do|your role|the role|in this role|day.to.day|duties|תחומי אחריות|תיאור התפקיד/i;
+/** A section heading is a short line; a long sentence that mentions "preferred" is content. */
+const HEADING_MAX_LENGTH = 60;
 
 const LABEL_TITLE = /^\s*(?:role|title|position|job title)\s*:\s*(.+)$/i;
 const LABEL_COMPANY = /^\s*(?:company|employer|organisation|organization)\s*:\s*(.+)$/i;
@@ -117,9 +156,104 @@ function extractLanguageSignals(lines: string[]): { required: string[]; niceToHa
   return { required: [...required], niceToHave: [...niceToHave] };
 }
 
-export function summarizeText(text: string, overrides?: { title?: string; company?: string; location?: string }): ParsedJD {
+interface TermOccurrence {
+  term: string;
+  start: number;
+  end: number;
+  line: number;
+}
+
+function termPattern(term: string): RegExp {
+  return new RegExp(`(^|[^a-z0-9])(${term.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")})(?=[^a-z0-9]|$)`, "gi");
+}
+
+/** Index of the line containing `offset`: the last line start at or before it. `lineStarts` is ascending. */
+function lineIndexAt(lineStarts: number[], offset: number): number {
+  let lo = 0;
+  let hi = lineStarts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (lineStarts[mid] <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+function termOccurrences(lower: string, lineStarts: number[], term: string): TermOccurrence[] {
+  const occurrences: TermOccurrence[] = [];
+  for (const match of lower.matchAll(termPattern(term))) {
+    const start = (match.index ?? 0) + match[1].length;
+    // Binary search, not a walk from line 0: posting text is untrusted and a
+    // linear walk per match is quadratic on a crafted ad.
+    occurrences.push({ term, start, end: start + match[2].length, line: lineIndexAt(lineStarts, start) });
+  }
+  return occurrences;
+}
+
+/**
+ * Drop every occurrence that sits inside a strictly longer occurrence
+ * ("endpoint" inside "defender for endpoint"). Sorted by start ascending, then
+ * length descending, every strictly longer occurrence that contains another is
+ * visited before it, so one sweep tracking the furthest end replaces the
+ * all-pairs check. Occurrences with an identical span never hide each other.
+ * Returns the survivors in their original order.
+ */
+function standaloneOccurrences(all: TermOccurrence[]): TermOccurrence[] {
+  const order = all.map((_, index) => index);
+  order.sort((a, b) => all[a].start - all[b].start || (all[b].end - all[b].start) - (all[a].end - all[a].start));
+  const contained = new Uint8Array(all.length);
+  let furthestEnd = -1;
+  for (let i = 0; i < order.length; ) {
+    const { start, end } = all[order[i]];
+    let j = i;
+    while (j < order.length && all[order[j]].start === start && all[order[j]].end === end) j++;
+    const hidden = furthestEnd >= end;
+    for (let k = i; k < j; k++) if (hidden) contained[order[k]] = 1;
+    if (end > furthestEnd) furthestEnd = end;
+    i = j;
+  }
+  return all.filter((_, index) => contained[index] === 0);
+}
+
+/** Label every line with the posting section it sits in. */
+function labelSections(lines: string[]): Array<Exclude<RequirementSection, "title">> {
+  let section: Exclude<RequirementSection, "title"> = "other";
+  return lines.map((line) => {
+    const trimmed = line.trim();
+    const heading = trimmed.length > 0 && trimmed.length <= HEADING_MAX_LENGTH;
+    if (heading && NICE_SECTION.test(trimmed)) section = "nice-to-have";
+    else if (REQUIRED_SECTION.test(line)) section = "required";
+    else if (heading && RESPONSIBILITIES_SECTION.test(trimmed)) section = "responsibilities";
+    else if (heading && NON_REQUIREMENT_SECTION.test(trimmed)) section = "other";
+    return section;
+  });
+}
+
+/**
+ * Recognise vocabulary terms, classify each as required or nice-to-have, and
+ * rank them by section and position in the ad.
+ *
+ * Classification is unchanged from v1: a term is nice-to-have when it appears
+ * in the nice-to-have block and not in the requirements block. What changed:
+ * - Order follows the posting, not the vocabulary list (AUDIT.md F1).
+ * - A term that only appears inside a longer recognised term is dropped
+ *   ("Defender for Endpoint" is one requirement, not also "endpoint").
+ * - Terms in one alias group collapse to the highest-ranked spelling
+ *   ("Entra ID (Azure AD)" is one requirement).
+ */
+export function extractRequirements(
+  text: string,
+  title?: string,
+): { requirements: RankedRequirement[]; requiredSkills: string[]; niceToHaveSkills: string[] } {
   const lower = text.toLowerCase();
   const lines = text.split(/\r?\n/);
+  const lineStarts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    lineStarts.push(offset);
+    // split() drops the separator; account for "\r\n" as well as "\n".
+    offset += line.length + (text.charAt(offset + line.length) === "\r" ? 2 : 1);
+  }
 
   let niceStart = -1;
   let requiredStart = -1;
@@ -127,27 +261,72 @@ export function summarizeText(text: string, overrides?: { title?: string; compan
     if (requiredStart === -1 && REQUIRED_SECTION.test(line)) requiredStart = i;
     if (niceStart === -1 && NICE_SECTION.test(line)) niceStart = i;
   });
+  const inNiceBlock = (line: number) => niceStart >= 0 && line >= niceStart && (niceStart >= requiredStart || line < requiredStart);
+  const inRequiredBlock = (line: number) => requiredStart >= 0 && line >= requiredStart && (niceStart <= requiredStart || line < niceStart);
+  const sections = labelSections(lines);
 
-  const niceText =
-    niceStart >= 0
-      ? lines.slice(niceStart, niceStart < requiredStart ? requiredStart : undefined).join("\n").toLowerCase()
-      : "";
-
-  const requiredSkills: string[] = [];
-  const niceToHaveSkills: string[] = [];
+  const all: TermOccurrence[] = [];
   for (const term of SKILL_TERMS) {
     // SWIFT (all caps) is a banking network/standard, not the Apple language.
     // Keep the language signal case-sensitive so governance postings do not get
     // a fabricated mobile-development requirement from a compliance acronym.
     if (term === "swift" && !/\bSwift\b/.test(text)) continue;
-    const pattern = new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}([^a-z0-9]|$)`, "i");
-    if (!pattern.test(lower)) continue;
-    if (niceText && pattern.test(niceText) && !(requiredStart >= 0 && pattern.test(lines.slice(requiredStart, niceStart > requiredStart ? niceStart : undefined).join("\n").toLowerCase()))) {
-      niceToHaveSkills.push(term);
-    } else {
-      requiredSkills.push(term);
-    }
+    all.push(...termOccurrences(lower, lineStarts, term));
   }
+  const byTerm = new Map<string, TermOccurrence[]>();
+  for (const occurrence of standaloneOccurrences(all)) {
+    const group = byTerm.get(occurrence.term);
+    if (group) group.push(occurrence);
+    else byTerm.set(occurrence.term, [occurrence]);
+  }
+
+  const titleLower = (title ?? "").toLowerCase();
+  const candidates: Array<Omit<RankedRequirement, "rank"> & { group: string }> = [];
+  for (const term of SKILL_TERMS) {
+    const occurrences = byTerm.get(term);
+    if (!occurrences) continue;
+    const nice = occurrences.some((occurrence) => inNiceBlock(occurrence.line)) && !occurrences.some((occurrence) => inRequiredBlock(occurrence.line));
+    const generic = GENERIC_SKILL_TERMS.has(term);
+    const source = nice
+      ? (occurrences.find((occurrence) => inNiceBlock(occurrence.line)) ?? occurrences[0])
+      : (occurrences.find((occurrence) => inRequiredBlock(occurrence.line)) ?? occurrences.find((occurrence) => !inNiceBlock(occurrence.line)) ?? occurrences[0]);
+    let section: RequirementSection;
+    if (nice) section = "nice-to-have";
+    else if (titleLower && termOccurrences(titleLower, [0], term).length > 0) section = "title";
+    else if (inRequiredBlock(source.line)) section = "required";
+    else section = sections[source.line] === "nice-to-have" ? "other" : sections[source.line];
+    const weight = Math.round(SECTION_WEIGHT[section] * (generic ? 0.5 : 1) * 100) / 100;
+    candidates.push({
+      term,
+      weight,
+      section,
+      required: !nice,
+      generic,
+      position: source.start,
+      quote: lines[source.line].trim().replace(/^[-*•·\s]+/, "").slice(0, 200),
+      group: aliasGroupFor(term)?.key ?? term,
+    });
+  }
+
+  candidates.sort((a, b) => b.weight - a.weight || Number(b.required) - Number(a.required) || a.position - b.position);
+  const seenGroups = new Set<string>();
+  const requirements: RankedRequirement[] = [];
+  for (const { group, ...candidate } of candidates) {
+    if (seenGroups.has(group)) continue;
+    seenGroups.add(group);
+    requirements.push({ ...candidate, rank: requirements.length + 1 });
+  }
+  return {
+    requirements,
+    requiredSkills: requirements.filter((requirement) => requirement.required).map((requirement) => requirement.term),
+    niceToHaveSkills: requirements.filter((requirement) => !requirement.required).map((requirement) => requirement.term),
+  };
+}
+
+export function summarizeText(text: string, overrides?: { title?: string; company?: string; location?: string }): ParsedJD {
+  const lower = text.toLowerCase();
+  const lines = text.split(/\r?\n/);
+  const { requirements, requiredSkills, niceToHaveSkills } = extractRequirements(text, overrides?.title ?? inferHeading(text).title);
 
   const yearsMatch = lower.match(/(\d{1,2})\s*\+?\s*(?:years?|yrs?)|(?:שנות|שנים).{0,10}?(\d{1,2})|(\d{1,2}).{0,10}?(?:שנות|שנים)/);
   const yearsExperience = yearsMatch ? parseInt(yearsMatch[1] ?? yearsMatch[2] ?? yearsMatch[3], 10) : null;
@@ -189,6 +368,7 @@ export function summarizeText(text: string, overrides?: { title?: string; compan
     yearsExperience,
     requiredSkills,
     niceToHaveSkills,
+    requirements,
     niceToHaveLanguages,
     languages,
     education: eduMatch ? eduMatch[0] : null,
@@ -211,7 +391,11 @@ FLAGS
 
 OUTPUT
   JSON to stdout: { title, company, location, remote, officeDaysPerWeek, residencyRequirement, yearsExperience,
-  requiredSkills, niceToHaveSkills, languages, education, salary }
+  requiredSkills, niceToHaveSkills, requirements, languages, education, salary }
+  requiredSkills / niceToHaveSkills are in rank order. requirements[] carries
+  { term, rank, weight, section, required, generic, position, quote }: rank 1 is
+  the most important (section first: title > requirements > responsibilities >
+  other > nice-to-have, then position in the ad).
   Errors to stderr as JSON { error, code }
   Exit code: 0 = success, 1 = error
 

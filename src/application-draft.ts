@@ -1,6 +1,7 @@
+import { bannedPhrasePromptList, findBannedPhrases } from "./banned-phrases.js";
 import { z } from "zod";
 import type { Profile } from "./profile-schemas.js";
-import { summarizeText } from "../scripts/jobs/summarize.js";
+import { summarizeText, type ParsedJD } from "../scripts/jobs/summarize.js";
 import { scoreJob } from "../scripts/match/score-job.js";
 import { conventionsBlock, detectMarket, getMarketProfile, postingLanguage } from "./market-profiles.js";
 import { selectProjects } from "./project-matching.js";
@@ -90,7 +91,10 @@ export interface ApplicationBrief {
   marketName: string;
   evidence: EvidenceItem[];
   matched: string[];
+  /** Must-have misses from the scorer. */
   gaps: string[];
+  /** Unsupported nice-to-have skills: lower severity, but still never claimable. */
+  niceGaps: string[];
   missingFacts: string[];
   plan: ApplicationPlan;
   layoutRecommendation: LayoutRecommendation;
@@ -115,18 +119,6 @@ export interface DraftReview {
   };
 }
 
-const ROBOTIC_PHRASES = [
-  "i am writing to apply",
-  "i am writing to express my",
-  "i believe my experience aligns",
-  "intersection of what i do best",
-  "proven track record",
-  "measurable outcomes",
-  "multiple production environments",
-  "ready to deliver immediate impact",
-  "your esteemed company",
-  "cutting-edge environment",
-];
 
 function clean(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -136,7 +128,14 @@ function addEvidence(items: EvidenceItem[], item: EvidenceItem): void {
   if (item.text && !items.some((existing) => existing.id === item.id)) items.push(item);
 }
 
-export function buildEvidenceLedger(profile: Profile, posting: string, company: string, role: string): EvidenceItem[] {
+export function buildEvidenceLedger(
+  profile: Profile,
+  posting: string,
+  company: string,
+  role: string,
+  /** The posting already parsed with `summarizeText(posting, { company, title: role })`; parsed here when omitted. */
+  parsedJd?: ParsedJD,
+): EvidenceItem[] {
   const evidence: EvidenceItem[] = [];
   const id = profile.identity;
 
@@ -224,7 +223,7 @@ export function buildEvidenceLedger(profile: Profile, posting: string, company: 
 
   addEvidence(evidence, { id: "job:company", source: "job", kind: "posting", text: clean(company) });
   addEvidence(evidence, { id: "job:role", source: "job", kind: "posting", text: clean(role) });
-  const jd = summarizeText(posting, { company, title: role });
+  const jd = parsedJd ?? summarizeText(posting, { company, title: role });
   for (const [index, skill] of jd.requiredSkills.entries()) {
     addEvidence(evidence, { id: `job:required-skill:${index}`, source: "job", kind: "posting", text: clean(skill) });
   }
@@ -291,8 +290,10 @@ export function buildApplicationBrief(input: {
   // the default language and rides into the prompt as explicit constraints.
   const marketProfile = input.market ? (getMarketProfile(input.market) ?? detectMarket(posting)) : detectMarket(posting);
   const language = input.language ?? postingLanguage(marketProfile, posting);
-  const evidence = buildEvidenceLedger(profile, posting, company, role);
-  const result = scoreJob(summarizeText(posting, { company, title: role }), profile);
+  // Parse once: posting text is untrusted and can be up to the MCP input cap.
+  const jd = summarizeText(posting, { company, title: role });
+  const evidence = buildEvidenceLedger(profile, posting, company, role, jd);
+  const result = scoreJob(jd, profile);
   const plan = buildApplicationPlan({
     profile,
     posting,
@@ -312,6 +313,7 @@ export function buildApplicationBrief(input: {
     evidence,
     matched: result.matched,
     gaps: result.gaps,
+    niceGaps: result.niceGaps,
     missingFacts: findMissingFacts(profile),
     plan,
     layoutRecommendation: recommendCvLayout({ role, market: marketProfile.code, posting }),
@@ -344,7 +346,7 @@ The result is factual, specific, ATS-readable, ready for deterministic validatio
 </end_goal>
 
 <narrowing>
-Unknown evidence IDs, unsupported numbers, and skills listed as gaps will fail validation. Do not add a photo, references, an objective statement, or claims such as "measurable outcomes" unless those exact facts exist in profile evidence.
+Unknown evidence IDs, unsupported numbers, and skills listed as gaps will fail validation. Do not add a photo, references, an objective statement, or claims such as "measurable outcomes" unless those exact facts exist in profile evidence. These banned phrases fail validation in any field: ${bannedPhrasePromptList()}.
 </narrowing>
 
 <application_context>
@@ -517,7 +519,8 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
   // (issue #13). An undeclared gap may not appear in any candidate sentence.
   const declaredGaps = draft.strategy.honestGaps;
   const candidateSentences = splitSentences(letterText).filter((sentence) => !describesEmployerOnly(sentence));
-  for (const gap of brief.gaps) {
+  // Briefs written before niceGaps existed have no such field.
+  for (const gap of [...brief.gaps, ...(brief.niceGaps ?? [])]) {
     const skill = gap.replace(/^.*?:\s*/, "").replace(/\s+vs\s+.*$/, "").trim();
     if (!skill || containsTerm(profileEvidenceText, skill)) continue;
     const declared = declaredGaps.some((entry) => containsTerm(entry, skill));
@@ -534,9 +537,24 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
     findings.push({ severity: "error", code: "UNNATURAL_SALUTATION", message: `Recipient "${recipient}" names the company or role; use a verified person's name or "Hiring Team".`, path: "coverLetter.recipient" });
   }
 
-  const lower = text.toLowerCase();
-  for (const phrase of ROBOTIC_PHRASES) {
-    if (lower.includes(phrase)) findings.push({ severity: "warning", code: "ROBOTIC_PHRASE", message: `Replace generic phrase: '${phrase}'.` });
+  // Banned phrases block the draft (AUDIT.md F11). They were a warning, and
+  // warnings never changed `pass`, so clichés shipped. Each field is scanned
+  // on its own so the finding names where to fix it.
+  for (const { path, claim } of allClaims(draft)) {
+    for (const hit of findBannedPhrases(claim.text)) {
+      findings.push({ severity: "error", code: "BANNED_PHRASE", message: `Banned phrase '${hit.match}' (${hit.phrase}). ${hit.hint}`, path });
+    }
+  }
+  // The same lead verb on more than two bullets reads as a template.
+  const leadVerbs = new Map<string, number>();
+  for (const entry of draft.cv.experience) {
+    for (const bullet of entry.bullets) {
+      const verb = bullet.text.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, "");
+      if (verb) leadVerbs.set(verb, (leadVerbs.get(verb) ?? 0) + 1);
+    }
+  }
+  for (const [verb, count] of [...leadVerbs.entries()].sort()) {
+    if (count > 2) findings.push({ severity: "warning", code: "REPEATED_LEAD_VERB", message: `${count} bullets start with '${verb}'; vary the lead verbs so each bullet names its own action.`, path: "cv.experience" });
   }
   // Scale figures repeated verbatim across lines read as robotic. Track
   // thousands-separated figures only (e.g. 1,000 / 2,499) so ordinary tokens

@@ -3,7 +3,7 @@
 ## Critical Rules
 
 1. **NO em-dashes (--).**  Use commas, periods, or restructure the sentence instead.
-2. **NO cliches or filler phrases.** Cut: "I am passionate about", "I believe I would be a great fit", "leverage my skills", "hit the ground running", "drive results", "synergies".
+2. **NO cliches or filler phrases.** The deterministic review fails a draft on any phrase in `src/banned-phrases.ts`. Cut: "I am passionate about", "I believe I would be a great fit", "leverage my skills", "hit the ground running", "drive results", "synergies".
 3. **NO generic buzzwords** without concrete backing. Every claim must be supported by a specific example or fact.
 4. **NO apologetic or overly humble language.** Not "I think I could contribute" but "I bring X, demonstrated by Y."
 5. **NO unverified company claims.** Every company-specific statement in a cover letter (partnerships, product names, technology descriptions, expansions) must be independently verified via WebFetch or WebSearch before inclusion. Do not trust reviewer agent research at face value. If a claim cannot be verified, rephrase it in general terms or omit it.

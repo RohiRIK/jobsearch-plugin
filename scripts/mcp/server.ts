@@ -328,6 +328,7 @@ server.registerTool(
       evidence: z.array(EvidenceItem),
       matched: z.array(z.string()),
       gaps: z.array(z.string()),
+      niceGaps: z.array(z.string()),
       missingFacts: z.array(z.string()),
       plan: z.record(z.string(), z.unknown()),
       layoutRecommendation: z.record(z.string(), z.unknown()),
