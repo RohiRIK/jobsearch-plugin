@@ -38,12 +38,60 @@ jobs:
         with:
           bun-version: latest
 
-      # sync-public.sh runs `bun run gates` before it commits, and the PDF
-      # geometry/link tests from #18 shell out to pdftotext and pdfinfo. CI
-      # installs poppler-utils for the same reason; without it every hourly
-      # sync since 2026-11-06 failed in the gate and pushed nothing.
-      - name: Install PDF inspection tools
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      # sync-public.sh runs `bun run gates` before it commits. The PDF
+      # geometry/link tests shell out to pdftotext and pdfinfo, and the
+      # portfolio-PDF tests print through a sandboxed Chrome. These two steps
+      # mirror ci.yml; with poppler alone Sync failed with "No usable sandbox!"
+      # (run 43790908648).
+      - name: Install PDF inspection tools and sandboxed Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils google-chrome-stable
+          # Provision Chromium's documented helper on this ephemeral runner only.
+          sudo chown root:root /opt/google/chrome/chrome-sandbox
+          sudo chmod 4755 /opt/google/chrome/chrome-sandbox
+
+      - name: Route PDF tests to the sandboxed Chrome package
+        # Sync checks the private source out under source/; resolve the browser
+        # with that tree's own src/resolve-bin.ts, as CI does from its root.
+        working-directory: source
+        run: |
+          # The image also ships a Chromium snapshot (/usr/local/share/chromium,
+          # linked as /usr/bin/chromium and chromium-browser) that the exporter
+          # resolves first. It is root-owned with no SUID helper beside it, and
+          # Chromium ignores CHROME_DEVEL_SANDBOX for executables the current user
+          # does not own, so under Ubuntu's userns restriction it aborts with
+          # "No usable sandbox". Remove only those two links on this ephemeral
+          # runner; the signed package keeps its helper next to its executable.
+          # Never use --no-sandbox or relax AppArmor/userns host-wide.
+          echo "apparmor_restrict_unprivileged_userns=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo n/a)"
+          for link in /usr/bin/chromium /usr/bin/chromium-browser; do
+            [ -e "$link" ] || [ -L "$link" ] || continue
+            target="$(readlink -f "$link")"
+            stat -c '%n owner=%U:%G mode=%a' "$target"
+            ls -l "$(dirname "$target")"/chrome-sandbox "$(dirname "$target")"/chrome_sandbox 2>&1 || true
+            case "$target" in
+              /usr/local/share/chromium/*) sudo rm "$link" ;;
+              *) echo "::error::$link resolves to unexpected $target"; exit 1 ;;
+            esac
+          done
+          # Validate with the exporter's own resolver and candidate order.
+          bun -e '
+            import { realpathSync, statSync } from "node:fs";
+            import { dirname, join } from "node:path";
+            const { resolveBin } = await import(join(process.cwd(), "src/resolve-bin.ts"));
+            const found = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].map(resolveBin).find(Boolean);
+            if (!found) throw new Error("no browser resolved");
+            const exe = realpathSync(found), helper = join(dirname(exe), "chrome-sandbox");
+            const e = statSync(exe), h = statSync(helper);
+            console.log(`selected ${found} -> ${exe} uid=${e.uid}; helper ${helper} uid=${h.uid} mode=${(h.mode & 0o7777).toString(8)}`);
+            // google-chrome links to the package launcher, which execs ./chrome.
+            if (dirname(exe) !== "/opt/google/chrome" || e.uid !== 0) throw new Error("selected browser is not the root-owned signed Chrome package");
+            if (h.uid !== 0 || (h.mode & 0o4000) === 0 || (h.mode & 0o001) === 0) throw new Error("chrome-sandbox is not a root-owned setuid helper");
+          '
+          # Exercise the sandbox itself before the suite: Chrome aborts at zygote
+          # start-up when no sandbox is usable.
+          google-chrome-stable --headless --disable-gpu --user-data-dir="$(mktemp -d)" --dump-dom 'data:text/html,<p>sandbox-ok</p>' | grep -q sandbox-ok
 
       - name: Regenerate and commit
         run: |
