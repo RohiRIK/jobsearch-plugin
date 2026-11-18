@@ -2,6 +2,8 @@
 
 <!-- SETUP: Profile statements and section ordering are personalized by running /setup -->
 
+> **Legacy LaTeX path.** The evidence-grounded workflow (`jobsearch prepare` → draft → `jobsearch review` → render) takes its section rules from `SectionRubrics.md`, and those rules win wherever this guide differs. This file keeps the LaTeX compile notes and the relevance-weighted cutting method. Never invent a metric: a number appears only when the evidence has it; otherwise state the scope or the concrete result.
+
 ## Template: LaTeX moderncv (Banking Style)
 
 All CVs use the moderncv LaTeX package with the "banking" style and "blue" color scheme.
@@ -55,7 +57,7 @@ Expected output: `Output written on main_<company>.pdf (2 pages, ...)`. Any page
 \begin{document}
 \makecvtitle
 
-% 1. Profile statement (1-3 sentences, tailored per role)
+% 1. Profile statement (2-3 sentences, 40-65 words; see SectionRubrics.md "Summary")
 % 2. Skills section
 % 3. Education section
 % 4. Professional Experience section
@@ -101,9 +103,9 @@ Two related patterns are fine and should be kept:
 ### Profile Statement / Elevator Pitch (Best Practice)
 This is the most important section to customize. It appears right after `\makecvtitle`.
 
-Write 5-7 lines that function as an "elevator pitch": a concise, compelling introduction explaining why you're qualified for *this specific role*. Focus on what the employer gains from hiring you.
+Follow the Summary rubric in `SectionRubrics.md`: 2-3 sentences (40-65 words) that state the role identity with scope from evidence, one concrete proof tied to the posting's top requirement, and what the team gets. Focus on what the employer gains from hiring you.
 
-**Create 2-3 profile statement templates for your main role types:**
+**Profile statement references for your main role types** (tone references written by /setup from your own past statements; rewrite for each posting, never copy a number that the evidence does not contain):
 
 <!-- SETUP: These are populated based on your background -->
 **For [YOUR_PRIMARY_ROLE_TYPE] roles:**
@@ -113,9 +115,7 @@ Write 5-7 lines that function as an "elevator pitch": a concise, compelling intr
 > [YOUR_PROFILE_STATEMENT_TEMPLATE_2]
 
 ### Core Competencies / Skills Section (Best Practice)
-Reorder and emphasize based on the role. Use bold category labels.
-
-List **5-7 key competencies** in bullet format, tailored to the specific job. For each competency, briefly explain how it adds value to the position.
+Follow the Skills rubric in `SectionRubrics.md`: group skills under the posting's capability areas (not your profile's categories), order them by how the posting ranks them, and include only skills a role or project line proves. A skill label on its own is not evidence.
 
 ### Education
 - Always include your highest degrees
@@ -125,7 +125,7 @@ List **5-7 key competencies** in bullet format, tailored to the specific job. Fo
 ### Professional Experience
 - Rewrite bullet points to emphasize aspects most relevant to the target role
 - Use 4-6 bullets for most recent role, 3-4 for previous, 2-3 for older
-- **Emphasize measurable results** where possible: "Reduced processing time by X%", "Model adopted by the team"
+- Each bullet follows the Experience rubric in `SectionRubrics.md`: problem or context, action (verb + object + method), then the result or the scope. Use a number only when the evidence contains it. Without one, state the scope ("across every client tenant") or the concrete result ("replaced manual GPO review with a scripted mapping"); never write a placeholder or an estimate.
 
 ### Handling Employment Gaps (Best Practice)
 If there is a gap in your employment history:
@@ -197,8 +197,8 @@ The CV **must** fit on exactly 2 pages when compiled. Use these content limits a
 
 | Section | Max budget |
 |---------|-----------|
-| Profile statement | 3-4 lines |
-| Skills | 5 items, each 1-2 lines |
+| Profile statement | 2-3 sentences (40-65 words) |
+| Skills | 3-5 groups, at most 6 items each |
 | Most recent role | 4-5 bullets |
 | Previous role | 2-3 bullets |
 | Older roles | 2 bullets (1 line each) |

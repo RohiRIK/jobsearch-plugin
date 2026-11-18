@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { BANNED_PHRASES, bannedPhrasePromptList, findBannedPhrases } from "../src/banned-phrases.js";
 import { buildApplicationBrief, reviewApplicationDraft } from "../src/application-draft.js";
-import { applicationProfile, validApplicationDraft } from "./fixtures/application.js";
+import { applicationProfile, validApplicationDraft, validApplicationDraftV2 } from "./fixtures/application.js";
 
 const posting = "Platform Engineer at Acme. Requirements: Python, Terraform, AWS. Nice to have: Kubernetes.";
 const brief = () => buildApplicationBrief({ profile: applicationProfile, posting, company: "Acme", role: "Platform Engineer" });
@@ -90,7 +90,7 @@ describe("banned phrase list", () => {
 
 describe("banned phrases block the deterministic review", () => {
   test("the clean fixture still passes", () => {
-    expect(reviewApplicationDraft(validApplicationDraft(), brief()).pass).toBe(true);
+    expect(reviewApplicationDraft(validApplicationDraftV2(), brief()).pass).toBe(true);
   });
 
   test("a banned phrase in a CV bullet is an error with the field path, and the draft fails", () => {

@@ -1,4 +1,4 @@
-import { ApplicationDraft } from "../../src/application-draft.js";
+import { ApplicationDraftV1, ApplicationDraftV2 } from "../../src/application-draft.js";
 import type { Profile } from "../../src/profile-schemas.js";
 
 export const applicationProfile: Profile = {
@@ -40,7 +40,7 @@ export const applicationProfile: Profile = {
 export const applicationPosting = "Platform Engineer. Requirements: Python, Terraform, Kubernetes. Build secure delivery automation.";
 
 export function validApplicationDraft() {
-  return ApplicationDraft.parse({
+  return ApplicationDraftV1.parse({
     version: 1,
     company: "Acme",
     role: "Platform Engineer",
@@ -84,6 +84,38 @@ export function validApplicationDraft() {
       sectionOrder: ["summary", "experience", "projects", "education", "certifications"],
       keywordsUsed: ["Python", "Terraform"],
       honestGaps: ["Kubernetes"],
+    },
+  });
+}
+
+/** The same draft in contract v2: skills grouped by the posting's capability areas, each backed by work evidence. */
+export function validApplicationDraftV2() {
+  const v1 = validApplicationDraft();
+  return ApplicationDraftV2.parse({
+    ...v1,
+    version: 2,
+    cv: {
+      ...v1.cv,
+      // Contract v2 reviews raw paraphrase as an error, so the second bullet
+      // says what the responsibility line shows in its own words.
+      experience: [
+        {
+          sourceIndex: 0,
+          bullets: [
+            v1.cv.experience[0].bullets[0],
+            { text: "Kept the deployment tooling in working order alongside the security team.", evidenceIds: ["profile:experience:0:responsibility:0"] },
+          ],
+        },
+      ],
+      skills: [
+        {
+          group: "Delivery automation",
+          items: [
+            { text: "Python", evidenceIds: ["profile:experience:0:achievement:0", "profile:skill:0:0"] },
+            { text: "Terraform", evidenceIds: ["profile:experience:0:achievement:0", "profile:skill:0:1"] },
+          ],
+        },
+      ],
     },
   });
 }

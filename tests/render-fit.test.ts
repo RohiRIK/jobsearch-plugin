@@ -69,12 +69,12 @@ describe("render --fit", () => {
 
 describe("jobsearch render --fit", () => {
   test("adds a fit report to render's output and leaves the chosen layout in place", async () => {
-    const { applicationPosting, applicationProfile, validApplicationDraft } = await import("./fixtures/application.js");
+    const { applicationPosting, applicationProfile, validApplicationDraftV2 } = await import("./fixtures/application.js");
     const home = join(dir, "home");
     mkdirSync(join(home, "data"), { recursive: true });
     writeFileSync(join(home, "data", "profile.json"), JSON.stringify(applicationProfile));
     writeFileSync(join(dir, "job.txt"), applicationPosting);
-    writeFileSync(join(dir, "draft.json"), JSON.stringify(validApplicationDraft()));
+    writeFileSync(join(dir, "draft.json"), JSON.stringify(validApplicationDraftV2()));
     const proc = Bun.spawnSync([process.execPath, join(ROOT, "scripts/jobsearch.ts"), "render", "--draft", join(dir, "draft.json"), "--job", join(dir, "job.txt"), "--layout", "executive", "--fit", "--yes"], {
       env: { ...process.env, JOB_SEARCH_HOME: home, TRACKER_DB: "", JOB_SEARCH_TELEMETRY: "0" },
     });

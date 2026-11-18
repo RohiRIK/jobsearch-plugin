@@ -1,5 +1,7 @@
 # Writing Style Guide
 
+Section purposes, required content and failure patterns live in `SectionRubrics.md` (summary = tailored value proposition, skills grouped by the posting and backed by work evidence, experience = problem, action, result). This file covers tone and style.
+
 ## Critical Rules
 
 1. **NO em-dashes (--).**  Use commas, periods, or restructure the sentence instead.

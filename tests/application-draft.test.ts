@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { buildApplicationBrief, buildEvidenceLedger, reviewApplicationDraft } from "../src/application-draft.js";
 import { renderCoverLetterTypst, renderCvTypst, typstString } from "../src/application-renderers.js";
-import { applicationPosting, applicationProfile, validApplicationDraft } from "./fixtures/application.js";
+import { applicationPosting, applicationProfile, validApplicationDraft, validApplicationDraftV2 } from "./fixtures/application.js";
 
 describe("application drafting contract", () => {
   const brief = buildApplicationBrief({ profile: applicationProfile, posting: applicationPosting, company: "Acme", role: "Platform Engineer" });
@@ -55,7 +55,7 @@ describe("application drafting contract", () => {
   });
 
   test("accepts a grounded draft and reports useful metrics", () => {
-    const review = reviewApplicationDraft(validApplicationDraft(), brief);
+    const review = reviewApplicationDraft(validApplicationDraftV2(), brief);
     expect(review.pass).toBe(true);
     expect(review.metrics.evidenceItemsUsed).toBeGreaterThan(4);
     expect(review.metrics.keywordCoverage).toBe(1);
@@ -108,7 +108,7 @@ describe("application drafting contract", () => {
   // Project matching decides which portfolio work is the right evidence for a
   // posting. The CV is where that decision has to actually show up.
   test("accepts projects that project matching put in the ledger", () => {
-    const draft = validApplicationDraft();
+    const draft = validApplicationDraftV2();
     draft.cv.projects = [
       {
         slug: "delivery-pipeline",

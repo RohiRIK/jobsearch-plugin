@@ -2,6 +2,7 @@ import type { Profile } from "./profile-schemas.js";
 import type { MatchResult } from "../scripts/match/score-job.js";
 import type { ParsedJD } from "../scripts/jobs/summarize.js";
 import { containsPhrase, detectJobDomains, selectProjects } from "./project-matching.js";
+import { directWorkRequirements, type EvidenceMatrix } from "./evidence-matrix.js";
 
 export type EvidenceClass = "professional-experience" | "work-project" | "personal-project" | "supporting-skill";
 
@@ -60,6 +61,13 @@ function rankExperience(profile: Profile, jd: ParsedJD): Array<{ index: number; 
     .sort((a, b) => b.score - a.score || a.index - b.index);
 }
 
+/** Most role lines listed per experience entry in evidencePriorities. */
+const MAX_LINES_PER_ROLE = 4;
+
+function joinTerms(terms: string[]): string {
+  return terms.length <= 1 ? (terms[0] ?? "") : `${terms.slice(0, -1).join(", ")} and ${terms[terms.length - 1]}`;
+}
+
 function titleCase(value: string): string {
   return value.replace(/\b\w/g, (character) => character.toUpperCase());
 }
@@ -73,6 +81,12 @@ export function buildApplicationPlan(input: {
   score: MatchResult;
   cvPages: [number, number];
   educationFirst: boolean;
+  /**
+   * Requirement → evidence matrix over the same ledger. When given, evidence
+   * priorities name individual lines (each once) and a requirement the
+   * matrix proves from work evidence is not a gap even without a skill label.
+   */
+  matrix?: EvidenceMatrix;
 }): ApplicationPlan {
   const domains = detectJobDomains(`${input.role}\n${input.posting}`);
   const required = input.jd.requiredSkills.slice(0, 5);
@@ -88,9 +102,19 @@ export function buildApplicationPlan(input: {
   // evidence and the writer padded around them (AUDIT.md F2).
   const gapSet = new Set(input.score.gaps.map((gap) => gap.toLowerCase()));
   const niceGapSet = new Set((input.score.niceGaps ?? []).map((gap) => gap.toLowerCase()));
-  const isGap = (skill: string) => gapSet.has(skill.toLowerCase());
-  const isNiceGap = (skill: string) => niceGapSet.has(skill.toLowerCase());
-  const mustProve = [...required.filter((skill) => !isGap(skill)), ...nice.filter((skill) => !isNiceGap(skill))].map(titleCase);
+  // The scorer only reads skill labels. A requirement that a responsibility,
+  // achievement, project or certification proves is supported evidence, not a
+  // gap; one backed by nothing at all stays a gap.
+  const provenByWork = new Set(
+    (input.matrix?.rows ?? []).filter((row) => row.status === "proven").map((row) => row.requirement.toLowerCase()),
+  );
+  const isGap = (skill: string) => gapSet.has(skill.toLowerCase()) && !provenByWork.has(skill.toLowerCase());
+  const isNiceGap = (skill: string) => niceGapSet.has(skill.toLowerCase()) && !provenByWork.has(skill.toLowerCase());
+  // A requirement backed only by a saved skill label is not proven either: the
+  // writer is told to keep it out of the CV, so it cannot be a thing to prove.
+  const labelOnly = new Set((input.matrix?.labelOnly ?? []).map((term) => term.toLowerCase()));
+  const provable = (skill: string) => !labelOnly.has(skill.toLowerCase());
+  const mustProve = [...required.filter((skill) => !isGap(skill) && provable(skill)), ...nice.filter((skill) => !isNiceGap(skill) && provable(skill))].map(titleCase);
   const gapDetails: ApplicationPlan["gapDetails"] = [
     ...required.filter(isGap).map((skill) => ({ requirement: titleCase(skill), severity: "must-have" as const })),
     ...nice.filter(isNiceGap).map((skill) => ({ requirement: titleCase(skill), severity: "nice-to-have" as const })),
@@ -104,37 +128,55 @@ export function buildApplicationPlan(input: {
   const priorities: EvidencePriority[] = [];
   let priority = 1;
 
+  // Each evidence ID appears once (AUDIT.md F8). The role header used to be
+  // repeated once per matched skill ("matched by ...: powershell", "...: azure"),
+  // so the writer could not tell which line proved which requirement. Now the
+  // header carries the role context once, followed by the specific lines the
+  // evidence matrix ties to requirements, best-ranked first.
+  const linesByRole = new Map<number, NonNullable<ApplicationPlan["evidencePriorities"]>>();
+  const topDirect = new Set((input.matrix ? directWorkRequirements(input.matrix) : []).slice(0, 3).map((term) => term.toLowerCase()));
+  for (const line of input.matrix?.lines ?? []) {
+    if (line.strength !== "direct-work" || line.experienceIndex === null) continue;
+    if (line.evidenceId === `profile:experience:${line.experienceIndex}`) continue;
+    const list = linesByRole.get(line.experienceIndex) ?? [];
+    if (list.length >= MAX_LINES_PER_ROLE) continue;
+    const provesTop = line.requirements.some((term) => topDirect.has(term.toLowerCase()));
+    list.push({
+      evidenceId: line.evidenceId,
+      kind: "experience",
+      classification: "professional-experience",
+      priority: 0,
+      reason: `Proves ${line.requirements.slice(0, 4).join(", ")} (posting rank ${line.bestRank})`,
+      use: provesTop ? "summary proof and experience bullet" : "experience bullet and skills evidence",
+    });
+    linesByRole.set(line.experienceIndex, list);
+  }
   for (const item of rankedExperience.slice(0, 4)) {
-    const experience = input.profile.experience![item.index];
+    const lines = linesByRole.get(item.index) ?? [];
+    const proven = (input.matrix?.rows ?? [])
+      .filter((row) => row.status === "proven" && row.evidence.some((entry) => entry.strength === "direct-work" && entry.experienceIndex === item.index))
+      .map((row) => row.requirement);
+    const matched = proven.length ? proven : item.matchedSkills;
     priorities.push({
       evidenceId: `profile:experience:${item.index}`,
       kind: "experience",
       classification: "professional-experience",
       priority: priority++,
-      reason: item.matchedSkills.length
-        ? `Matches ${item.matchedSkills.slice(0, 4).join(", ")}`
-        : "Provides professional delivery context",
-      use: "summary, experience bullets, and interview examples",
+      reason: matched.length ? `Matches ${matched.slice(0, 4).join(", ")}` : "Provides professional delivery context",
+      use: "role context for the lines below; cite those lines, not the header, in bullets",
     });
-    for (const skill of item.matchedSkills.slice(0, 3)) {
-      priorities.push({
-        evidenceId: `profile:experience:${item.index}`,
-        kind: "experience",
-        classification: "professional-experience",
-        priority: priority++,
-        reason: `Role requirement matched by ${experience.title}: ${skill}`,
-        use: "skills context and tailored bullet",
-      });
-    }
+    for (const line of lines) priorities.push({ ...line, priority: priority++ });
   }
 
   for (const match of projectSelection.selected) {
+    const evidenceId = `profile:project:${match.project.slug}`;
+    const proves = input.matrix?.lines.find((line) => line.evidenceId === evidenceId.replace(/[^a-z0-9:_-]/g, "-"))?.requirements ?? [];
     priorities.push({
-      evidenceId: `profile:project:${match.project.slug}`,
+      evidenceId,
       kind: "project",
       classification: projectClassification(match.project),
       priority: priority++,
-      reason: match.reason,
+      reason: proves.length ? `${match.reason}; proves ${proves.slice(0, 4).join(", ")}` : match.reason,
       use: "project section and interview example",
     });
   }
@@ -168,8 +210,13 @@ export function buildApplicationPlan(input: {
     });
   }
 
-  const lead = mustProve[0]
-    ? `Lead with verified evidence that proves ${mustProve[0]} for this ${input.role}; keep supporting evidence below it.`
+  // Lead with the top requirements that direct work proves (AUDIT.md §4.1):
+  // a skill label alone is weaker proof than a responsibility line.
+  const direct = new Set((input.matrix ? directWorkRequirements(input.matrix) : []).map((term) => term.toLowerCase()));
+  const thesisTerms = mustProve.filter((term) => direct.has(term.toLowerCase())).slice(0, 3);
+  const leadTerms = thesisTerms.length ? thesisTerms : mustProve.slice(0, 1);
+  const lead = leadTerms.length
+    ? `Lead with verified evidence that proves ${joinTerms(leadTerms)} for this ${input.role}; keep supporting evidence below it.`
     : `No top requirement of this ${input.role} is supported by the evidence; lead with the most relevant verified experience${domains[0] ? ` in ${domains[0]}` : ""} and do not imply the missing skills.`;
   const roleThesis = openGaps.length
     ? `${lead} Treat ${openGaps.slice(0, 3).join(", ")} as honest gaps or transferable experience, never as demonstrated skill.`

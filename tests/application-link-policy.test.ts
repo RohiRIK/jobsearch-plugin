@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveTypstCommand } from "../src/resolve-bin.js";
-import { applicationPosting, applicationProfile, validApplicationDraft } from "./fixtures/application.js";
+import { applicationPosting, applicationProfile, validApplicationDraftV2 } from "./fixtures/application.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 const TYPST = resolveTypstCommand(ROOT);
@@ -41,7 +41,7 @@ function findSources(dir: string): ScannedFiles {
 
 /** Draft extended with the profile's portfolio project so project links have evidence. */
 function draftWithProject(): unknown {
-  const draft = validApplicationDraft();
+  const draft = validApplicationDraftV2();
   return {
     ...draft,
     cv: {

@@ -19,10 +19,12 @@ import { pendingAlerts } from "../jobs/alerts.js";
 import { buildPrepSheet } from "../jobs/interview-prep.js";
 import { draftParagraphs } from "../generate/cover-letter.js";
 import {
+  ApplicationDraft,
   EvidenceItem,
   buildApplicationBrief,
   reviewApplicationDraft,
 } from "../../src/application-draft.js";
+import { critiqueDraft } from "../../src/critique.js";
 import { CODE_ROOT, WORKSPACE as ROOT } from "../../src/paths.js";
 
 
@@ -347,13 +349,15 @@ server.registerTool(
   {
     title: "Review an evidence-grounded application draft",
     description:
-      "Validate a structured CV and cover-letter draft before rendering. Read-only: rejects unknown evidence IDs, unsupported numbers, genuine gaps presented as skills, schema errors, and context mismatches; returns deterministic style and length findings.",
+      "Validate a structured CV and cover-letter draft before rendering. Read-only: rejects unknown evidence IDs, unsupported numbers, genuine gaps presented as skills, schema errors, and context mismatches; returns deterministic style and length findings, plus critique.prompt for the rubric critic. Pass the critic's JSON back as critique_json to get critique.next (ship, regenerate named sections, or report after 2 rounds).",
     inputSchema: {
       company: z.string().min(1).max(200),
       role: z.string().min(1).max(200),
       posting_text: z.string().min(20).max(200_000),
       draft_json: z.string().min(2).max(200_000),
       language: z.string().min(2).max(40).optional(),
+      critique_json: z.string().min(2).max(100_000).optional(),
+      round: z.number().int().min(0).max(2).optional(),
     },
     outputSchema: {
       pass: z.boolean(),
@@ -371,9 +375,20 @@ server.registerTool(
         evidenceItemsUsed: z.number(),
         keywordCoverage: z.number(),
       }),
+      critique: z
+        .object({
+          required: z.literal(true),
+          status: z.enum(["pending", "passed", "failed", "invalid"]),
+          round: z.number(),
+          maxRounds: z.number(),
+          prompt: z.string(),
+          next: z.object({ action: z.enum(["ship", "critique", "regenerate", "report"]), sections: z.array(z.string()) }).passthrough(),
+        })
+        .passthrough()
+        .optional(),
     },
   },
-  async ({ company, role, posting_text, draft_json, language }) => {
+  async ({ company, role, posting_text, draft_json, language, critique_json, round }) => {
     const profile = readProfile();
     if (!profile) return textResult({ error: "No profile. Run: bun run profile" }, true);
     let draft: unknown;
@@ -387,7 +402,20 @@ server.registerTool(
       });
     }
     const brief = buildApplicationBrief({ profile, posting: posting_text, company, role, language });
-    return structuredResult(reviewApplicationDraft(draft, brief));
+    const review = reviewApplicationDraft(draft, brief);
+    const parsedDraft = ApplicationDraft.safeParse(draft);
+    if (!parsedDraft.success) return structuredResult(review);
+    let critiqueInput: unknown;
+    if (critique_json !== undefined) {
+      try {
+        critiqueInput = JSON.parse(critique_json);
+      } catch {
+        // Fails closed below: a critique that is not JSON is an invalid critique.
+        critiqueInput = null;
+      }
+    }
+    const result = critiqueDraft(parsedDraft.data, brief, review, critiqueInput, round ?? 0);
+    return structuredResult({ ...result.review, critique: result.critique });
   },
 );
 

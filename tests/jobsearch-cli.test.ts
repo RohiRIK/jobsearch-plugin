@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Tracker } from "../src/tracker.js";
-import { applicationPosting, applicationProfile, validApplicationDraft } from "./fixtures/application.js";
+import { applicationPosting, applicationProfile, validApplicationDraftV2 } from "./fixtures/application.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 let dir: string;
@@ -33,7 +33,7 @@ beforeAll(() => {
   writeFileSync(profilePath, JSON.stringify(applicationProfile));
   writeFileSync(join(home, "data", "jd", "platform.txt"), applicationPosting);
   writeFileSync(join(home, "data", "jd", "unrelated.md"), "Pastry Chef. Requirements: French pastry, lamination, sourdough. Onsite in Paris, France.");
-  writeFileSync(join(dir, "draft.json"), JSON.stringify(validApplicationDraft()));
+  writeFileSync(join(dir, "draft.json"), JSON.stringify(validApplicationDraftV2()));
   const tracker = new Tracker(join(home, "data", "tracker.db"));
   tracker.insert({ id: "app_20260901_example-labs", date: "2026-09-01", company: "Example Labs", role: "Platform Engineer", status: "applied" });
   tracker.close();
@@ -204,7 +204,7 @@ describe("application pipeline", () => {
   });
 
   test("review of a draft with an unsupported number is a negative verdict (exit 1), not an error", async () => {
-    const draft = validApplicationDraft();
+    const draft = validApplicationDraftV2();
     draft.cv.summary.text = `${draft.cv.summary.text} Cut deployment time by 73%.`;
     writeFileSync(join(dir, "bad-draft.json"), JSON.stringify(draft));
     const { code, stdout } = await js(["review", "--draft", join(dir, "bad-draft.json"), "--job", join(home, "data", "jd", "platform.txt")]);

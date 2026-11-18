@@ -2,13 +2,13 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applicationProfile, applicationPosting, validApplicationDraft } from "./fixtures/application.js";
+import { applicationProfile, applicationPosting, validApplicationDraftV2 } from "./fixtures/application.js";
 
 test("public render command forwards project-link policy through the bundled tool contract", () => {
   const dir = mkdtempSync(join(tmpdir(), "application-command-links-"));
   try {
     const profile = join(dir, "profile.json"), job = join(dir, "job.txt"), draftPath = join(dir, "draft.json");
-    const draft = validApplicationDraft();
+    const draft = validApplicationDraftV2();
     draft.cv.projects = [{ slug: "delivery-pipeline", description: { text: "Reusable deployment pipeline for platform teams.", evidenceIds: ["profile:project:delivery-pipeline"] }, highlights: [] }];
     writeFileSync(profile, JSON.stringify(applicationProfile));
     writeFileSync(job, applicationPosting);

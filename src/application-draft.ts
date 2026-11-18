@@ -7,6 +7,14 @@ import { conventionsBlock, detectMarket, getMarketProfile, postingLanguage } fro
 import { selectProjects } from "./project-matching.js";
 import { buildApplicationPlan, type ApplicationPlan } from "./application-plan.js";
 import { recommendCvLayout, type LayoutRecommendation } from "./cv-options.js";
+import { buildEvidenceMatrix, type EvidenceMatrix } from "./evidence-matrix.js";
+import { findPlaceholderMetrics, rubricPromptBlock, NO_INVENTED_METRICS } from "./section-rubrics.js";
+import { promptJson } from "./prompt-json.js";
+import { RAW_PARAPHRASE_THRESHOLD, findAdjectiveStacks, trigramOverlap, trigrams } from "./prose-checks.js";
+import { GENERIC_SKILL_TERMS, SKILL_TERMS, containsSkillTerm, matchProfileSkill, normalizeSkillText } from "./skill-vocabulary.js";
+
+/** Broad terms LABEL_ONLY_CLAIM ignores: the generic list minus the ones that name a checkable claim. */
+const LABEL_ONLY_EXEMPT_TERMS: ReadonlySet<string> = new Set([...GENERIC_SKILL_TERMS].filter((term) => !["scrum", "agile", "ai"].includes(term)));
 
 export const EvidenceItem = z.object({
   id: z.string().regex(/^(profile|job):[a-z0-9:_-]+$/),
@@ -27,12 +35,14 @@ export const EvidenceClaim = z.object({
 });
 export type EvidenceClaim = z.infer<typeof EvidenceClaim>;
 
-export const ApplicationDraft = z.object({
-  version: z.literal(1),
-  company: z.string().min(1).max(200),
-  role: z.string().min(1).max(200),
-  language: z.string().min(2).max(40).default("English"),
-  cv: z.object({
+/** Contract v2 skills: groups named for the posting's capability areas (AUDIT.md §4.2, §4.4). */
+export const SkillGroup = z.object({
+  group: z.string().min(2).max(60),
+  items: z.array(EvidenceClaim).min(1).max(6),
+});
+export type SkillGroup = z.infer<typeof SkillGroup>;
+
+const CvV1 = z.object({
     headline: EvidenceClaim,
     summary: EvidenceClaim,
     skills: z.array(EvidenceClaim).min(1).max(24),
@@ -59,7 +69,23 @@ export const ApplicationDraft = z.object({
       )
       .max(4)
       .default([]),
-  }),
+});
+
+const CvV2 = CvV1.extend({
+  skills: z
+    .array(SkillGroup)
+    .min(1)
+    .max(5)
+    .refine((groups) => groups.reduce((total, group) => total + group.items.length, 0) <= 24, { message: "At most 24 skill items across all groups." }),
+});
+
+/** Contract v1: a flat skill list. Still accepted for review and render. */
+export const ApplicationDraftV1 = z.object({
+  version: z.literal(1),
+  company: z.string().min(1).max(200),
+  role: z.string().min(1).max(200),
+  language: z.string().min(2).max(40).default("English"),
+  cv: CvV1,
   coverLetter: z.object({
     recipient: z.string().min(1).max(200).default("Hiring Manager"),
     paragraphs: z.array(EvidenceClaim).min(3).max(5),
@@ -79,7 +105,25 @@ export const ApplicationDraft = z.object({
     honestGaps: z.array(z.string()).max(40).default([]),
   }),
 });
+export type ApplicationDraftV1 = z.infer<typeof ApplicationDraftV1>;
+
+/** Contract v2 (prompt v2): skills grouped by the posting's capability areas, each item backed by work evidence. */
+export const ApplicationDraftV2 = ApplicationDraftV1.extend({
+  version: z.literal(2),
+  cv: CvV2,
+});
+export type ApplicationDraftV2 = z.infer<typeof ApplicationDraftV2>;
+
+export const ApplicationDraft = z.discriminatedUnion("version", [ApplicationDraftV1, ApplicationDraftV2]);
 export type ApplicationDraft = z.infer<typeof ApplicationDraft>;
+
+/** Every CV skill item with its review path and display group, for either contract version. */
+export function skillClaims(draft: ApplicationDraft): Array<{ path: string; claim: EvidenceClaim; group: string | null }> {
+  if (draft.version === 1) return draft.cv.skills.map((claim, index) => ({ path: `cv.skills.${index}`, claim, group: null }));
+  return draft.cv.skills.flatMap((group, groupIndex) =>
+    group.items.map((claim, itemIndex) => ({ path: `cv.skills.${groupIndex}.items.${itemIndex}`, claim, group: group.group })),
+  );
+}
 
 export interface ApplicationBrief {
   version: 1;
@@ -96,6 +140,10 @@ export interface ApplicationBrief {
   /** Unsupported nice-to-have skills: lower severity, but still never claimable. */
   niceGaps: string[];
   missingFacts: string[];
+  /** Ranked posting requirement → the profile lines that prove it, or a gap (AUDIT.md §4.1). */
+  evidenceMatrix: EvidenceMatrix;
+  /** Draft contract version the prompt asks for. Review still accepts v1. */
+  contractVersion: 2;
   plan: ApplicationPlan;
   layoutRecommendation: LayoutRecommendation;
   prompt: string;
@@ -248,16 +296,16 @@ function findMissingFacts(profile: Profile): string[] {
 
 function promptContract(): string {
   return `{
-  "version": 1,
+  "version": 2,
   "company": "string",
   "role": "string",
   "language": "string",
   "cv": {
-    "headline": { "text": "string", "evidenceIds": ["profile:..."] },
-    "summary": { "text": "40-65 words", "evidenceIds": ["profile:..."] },
-    "skills": [{ "text": "skill", "evidenceIds": ["profile:skill:..."] }],
-    "experience": [{ "sourceIndex": 0, "bullets": [{ "text": "result or responsibility", "evidenceIds": ["profile:experience:..."] }] }],
-    "projects": [{ "slug": "matches a profile:project:<slug> evidence id", "description": { "text": "one or two sentences", "evidenceIds": ["profile:project:..."] }, "highlights": [{ "text": "specific outcome", "evidenceIds": ["profile:project:..."] }] }]
+    "headline": { "text": "target role noun + 1-2 differentiating domains, at most 10 words", "evidenceIds": ["profile:experience:..."] },
+    "summary": { "text": "value proposition, 2-3 sentences, 40-65 words", "evidenceIds": ["profile:experience:<i>:achievement:<j> or :responsibility:<j>", "..."] },
+    "skills": [{ "group": "capability area named in the posting's language", "items": [{ "text": "skill as the posting names it", "evidenceIds": ["profile:experience:<i>:responsibility:<j> or profile:project:<slug>", "profile:skill:... (optional, never alone)"] }] }],
+    "experience": [{ "sourceIndex": 0, "bullets": [{ "text": "problem/context, action (verb + object + method), result or scope", "evidenceIds": ["profile:experience:<i>:achievement:<j> or :responsibility:<j>"] }] }],
+    "projects": [{ "slug": "matches a profile:project:<slug> evidence id", "description": { "text": "problem, then what was built", "evidenceIds": ["profile:project:..."] }, "highlights": [{ "text": "outcome or scope from the evidence", "evidenceIds": ["profile:project:..."] }] }]
   },
   "coverLetter": {
     "recipient": "Hiring Manager",
@@ -294,6 +342,7 @@ export function buildApplicationBrief(input: {
   const jd = summarizeText(posting, { company, title: role });
   const evidence = buildEvidenceLedger(profile, posting, company, role, jd);
   const result = scoreJob(jd, profile);
+  const evidenceMatrix = buildEvidenceMatrix({ jd, evidence, profile });
   const plan = buildApplicationPlan({
     profile,
     posting,
@@ -302,6 +351,7 @@ export function buildApplicationBrief(input: {
     score: result,
     cvPages: marketProfile.pages,
     educationFirst: marketProfile.ordering === "education-first",
+    matrix: evidenceMatrix,
   });
   const briefBase = {
     version: 1 as const,
@@ -315,6 +365,8 @@ export function buildApplicationBrief(input: {
     gaps: result.gaps,
     niceGaps: result.niceGaps,
     missingFacts: findMissingFacts(profile),
+    evidenceMatrix,
+    contractVersion: 2 as const,
     plan,
     layoutRecommendation: recommendCvLayout({ role, market: marketProfile.code, posting }),
   };
@@ -328,14 +380,20 @@ Draft both documents as one JSON object matching the response contract. Treat th
 </instructions>
 
 <steps>
-1. Treat the supplied application plan as the document's strategy. Select the strongest profile evidence named by its evidencePriorities rather than repeating the whole profile; keep its work/personal classifications and section order.
-2. Write a 40-65 word CV summary and 3-6 evidence-backed bullets per relevant role. Lead bullets with actions. Numbers must stay truthful to their evidence, but phrase them naturally: state a scale figure once (or twice at most, framed differently), then refer back with varied wording such as 'at that scale', 'the same tenant', or 'enterprise-wide' instead of repeating the same figure in every line.
-3. Write a 220-300 word cover letter in ${language}, using 3-5 paragraphs. Open with the strongest concrete match, not an application announcement. Make the motivation specific to the supplied posting without inventing company facts. Set recipient to a named person only when the posting names one; otherwise use "Hiring Team". Never put the company or role in the recipient.
-4. Include only portfolio projects present in the evidence bundle as profile:project:<slug>. They were already filtered for relevance to this posting; leave the section empty rather than adding one that does not strengthen the application. A project whose evidence says "Employer: not confirmed" belongs under Projects only: never cite it in a role's bullets and never say in either document that it was done at an employer.
-5. Use the recommended layout from the application context when the user wants an agent-selected template; the ranking is advisory and the human may override it with a reason.
-6. Remove filler, cliches, unsupported adjectives, subjective skill levels, em dashes, and duplicated CV prose.
-7. Return strict JSON only. Do not include markdown fences or reasoning.
+1. Treat the supplied application plan as the document's strategy: its role thesis, mustProve order, work/personal classifications and section order. Its evidencePriorities name individual profile lines, each once, ordered by the most important requirement they prove.
+2. Write from the evidence matrix (evidenceMatrix in the application context), not from the whole profile. Each row is one posting requirement in rank order (rank 1 matters most) with the profile lines that prove it, strongest first: direct-work, then work-project, personal-project, credential, skill-label-only. Cite a row's evidence IDs for every claim about that requirement. A row with status "gap" has no evidence: never claim it anywhere. A row with status "label-only" is backed only by a saved skill label: do not put it in skills, bullets, the headline or the summary.
+3. Write each CV section to its rubric in <section_rubrics>. The summary is a value proposition for this role, not a technology list. Skills are grouped under the posting's capability areas, ordered by requirement rank, and every item cites the experience, achievement or project evidence that proves it; a skill label never cites only itself. Each experience bullet states the problem or context, the action, and the result or scope, and proves one requirement.
+4. ${NO_INVENTED_METRICS} Numbers that are in the evidence stay exact: state a scale figure once (or twice at most, framed differently), then refer back with varied wording such as 'at that scale', 'the same tenant', or 'enterprise-wide'.
+5. Write a 220-300 word cover letter in ${language}, using 3-5 paragraphs. Open with the strongest concrete match, not an application announcement. Make the motivation specific to the supplied posting without inventing company facts. Set recipient to a named person only when the posting names one; otherwise use "Hiring Team". Never put the company or role in the recipient.
+6. Include only portfolio projects present in the evidence bundle as profile:project:<slug>. They were already filtered for relevance to this posting; leave the section empty rather than adding one that does not strengthen the application. A project whose evidence says "Employer: not confirmed" belongs under Projects only: never cite it in a role's bullets and never say in either document that it was done at an employer.
+7. Use the recommended layout from the application context when the user wants an agent-selected template; the ranking is advisory and the human may override it with a reason.
+8. Remove filler, cliches, unsupported adjectives, subjective skill levels, em dashes, and duplicated CV prose.
+9. Return strict JSON only, with "version": 2. Do not include markdown fences or reasoning.
 </steps>
+
+<section_rubrics>
+${rubricPromptBlock()}
+</section_rubrics>
 
 <market_conventions>
 ${conventionsBlock(marketProfile)}
@@ -346,11 +404,11 @@ The result is factual, specific, ATS-readable, ready for deterministic validatio
 </end_goal>
 
 <narrowing>
-Unknown evidence IDs, unsupported numbers, and skills listed as gaps will fail validation. Do not add a photo, references, an objective statement, or claims such as "measurable outcomes" unless those exact facts exist in profile evidence. These banned phrases fail validation in any field: ${bannedPhrasePromptList()}.
+Unknown evidence IDs, unsupported or placeholder numbers, skills listed as gaps, skill items that cite only their own skill label, bullets that cite no responsibility, achievement or project, and a summary with no work evidence will fail validation. Do not add a photo, references, an objective statement, or claims such as "measurable outcomes" unless those exact facts exist in profile evidence. These banned phrases fail validation in any field: ${bannedPhrasePromptList()}.
 </narrowing>
 
 <application_context>
-${JSON.stringify({ ...briefBase, applicationPlan: plan }, null, 2)}
+${promptJson({ ...briefBase, applicationPlan: plan })}
 </application_context>
 
 <response_contract>
@@ -369,7 +427,7 @@ function allClaims(draft: ApplicationDraft): Array<{ path: string; claim: Eviden
     { path: "cv.headline", claim: draft.cv.headline, candidateRequired: true },
     { path: "cv.summary", claim: draft.cv.summary, candidateRequired: true },
   ];
-  draft.cv.skills.forEach((claim, index) => claims.push({ path: `cv.skills.${index}`, claim, candidateRequired: true }));
+  for (const { path, claim } of skillClaims(draft)) claims.push({ path, claim, candidateRequired: true });
   draft.cv.experience.forEach((entry, entryIndex) =>
     entry.bullets.forEach((claim, bulletIndex) =>
       claims.push({ path: `cv.experience.${entryIndex}.bullets.${bulletIndex}`, claim, candidateRequired: true }),
@@ -387,8 +445,298 @@ function allClaims(draft: ApplicationDraft): Array<{ path: string; claim: Eviden
   return claims;
 }
 
-function numberTokens(text: string): string[] {
-  return [...text.matchAll(/(?<![A-Za-z])\d+(?:[.,]\d+)?%?\+?/g)].map((match) => match[0].replace(/,$/, ""));
+/**
+ * Common technical identifiers whose digits are part of a name, not a figure.
+ * Kept short on purpose: any other identifier with digits ("Q3", "FY24",
+ * "SHA256", "by90", "2FA") is skipped only when the cited evidence names it
+ * verbatim, so an unknown shape fails closed (QA, PR #18 @ 31e1b4a). Compared
+ * case-insensitively. Version strings ("v2", "v2.3.1") are covered by
+ * VERSION_IDENTIFIER.
+ *
+ * "x86" and "x64" are not listed: "sped up builds x64" is a multiplier, so
+ * they pass only when the evidence names them (QA, PR #18 @ 442d7e1). E2E,
+ * O365, B2B, AES256, K3s, P1/P2, L1-L3 and Tier1-3 are names that failed
+ * closed on ordinary drafts (same QA round).
+ */
+export const NUMERIC_IDENTIFIER_ALLOWLIST: ReadonlySet<string> = new Set([
+  "k8s", "k3s", "m365", "o365", "win10", "win11", "iso27001", "soc2", "ipv4", "ipv6", "http2", "s3", "ec2", "oauth2",
+  "e2e", "b2b", "b2c", "aes256", "p1", "p2", "l1", "l2", "l3", "tier1", "tier2", "tier3",
+]);
+const VERSION_IDENTIFIER = /^v\d+(?:\.\d+)*$/i;
+
+const ALNUM = /[A-Za-z\d]/;
+const LETTER = /[A-Za-z]/;
+const DIGIT = /\d/;
+const IDENTIFIER_HEAD = /[A-Za-z][A-Za-z\d]*/y;
+/** A digit-led token glued to letters ("2FA", "5G", "3D", "2024Q3", "10kg"): a name, not a figure. */
+const DIGIT_LED = /\d+[A-Za-z][A-Za-z\d]*/y;
+const ALNUM_RUN = /[A-Za-z\d]+/y;
+const VERSION_PART = /\.\d+/y;
+const TRAILING_MAGNITUDE = /(?:\s?%)?\+?/y;
+/** Thousands written with a space, no-break space, thin space or apostrophe ("1 200 000", "1'000"). */
+const GROUP_SEPARATOR = /[ \u00A0\u202F\u2009'\u2019](?=\d)/g;
+/**
+ * A run of digits and separators as written ("1,200,000", "1 200 000",
+ * "11,40%", "2.3"), with a k/m/b/x suffix that is not the start of a unit
+ * ("10k", not "10kg"), then % (optionally after one space: "90 %") and +.
+ * Evidence keeps it whole, so "3,40" never backs "40" and "1 200 000" never
+ * backs "200". Space or apostrophe grouping needs a 1-3 digit lead and
+ * groups of exactly three digits, so "in 2023 100 users" stays two figures.
+ */
+const FIGURE_RUN = /(?:\d{1,3}(?:[ \u00A0\u202F\u2009'\u2019]\d{3}(?!\d))+|\d+)(?:[.,]\d+)*(?:[kKmMbBxX](?![A-Za-z]))?(?:[ \u00A0\u202F]?%)?\+?/y;
+/**
+ * One figure inside a run: comma groups of three digits are thousands
+ * ("1,200,000"). A group of one or two digits may be a decimal comma ("3,5"
+ * is 3.5 in a German or French draft), so it stays on the figure and only the
+ * whole run as written can back it (QA, PR #18 @ 82438a7: "5,5" was backed by
+ * a bare 5). A comma before four or more digits separates figures.
+ */
+const FIGURE_PART = /\d+(?:,\d{1,3}(?!\d))*(?:\.\d+)*(?:[kKmMbBxX](?![A-Za-z]))?%?\+?/g;
+/** A minus sign glued to a figure ("-40%", "−40%"), not a hyphen inside a word or range ("COVID-19", "40-50%"). */
+const SIGN = /[-\u2212\u2013]/;
+
+/**
+ * Digits as ASCII before scanning (QA, PR #18 @ 82438a7). The scanner reads
+ * only 0-9, so "٩٠%", "９０%" or "𝟗𝟎%" were never checked at all. NFKC folds
+ * full-width and mathematical digits and splits "½" into "1⁄2"; any other
+ * decimal digit maps by its place in its 0-9 block (Unicode encodes every
+ * decimal digit set as a contiguous 0-9 run).
+ */
+const NON_ASCII_DIGIT = /(?![0-9])\p{Nd}/gu;
+const DECIMAL_DIGIT = /\p{Nd}/u;
+function asciiDigits(text: string): string {
+  if (!/[^\x00-\x7f]/.test(text)) return text;
+  return text.normalize("NFKC").replace(NON_ASCII_DIGIT, (digit) => {
+    const point = digit.codePointAt(0)!;
+    let zero = point;
+    while (DECIMAL_DIGIT.test(String.fromCodePoint(zero - 1))) zero -= 1;
+    return String((point - zero) % 10);
+  });
+}
+
+function stickyMatch(pattern: RegExp, text: string, index: number): string {
+  pattern.lastIndex = index;
+  return pattern.exec(text)?.[0] ?? "";
+}
+
+/** A run as compared: grouping separators become commas, a space before % goes, a minus sign is ASCII. */
+function normalizeRun(run: string): string {
+  return run.replace(GROUP_SEPARATOR, ",").replace(/[ \u00A0\u202F](?=%)/, "").replace(/^\u2212/, "-");
+}
+
+/**
+ * One linear left-to-right pass. Each letter-led alphanumeric run that holds a
+ * digit ("Q3", "by90", "K8s", "v2.3.1"), and each digit-led run glued to
+ * letters ("2FA", "5G", "2024Q3"), is an identifier and goes to
+ * `onIdentifier` with any % or + glued after it. Every other digit run goes to
+ * `onRun`, whatever punctuation precedes it (",90%", "Q3,90%"). A decimal
+ * point with no digit before it stays on the run (".5x" is 0.5x, not 5x), and
+ * so does a minus sign that does not follow a letter or digit ("-40%"). No
+ * pattern repeats over a letter run, so the pass is linear.
+ */
+function scanFigures(text: string, onIdentifier: (id: string, magnitude: string) => void, onRun: (run: string) => void): void {
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    const previous = index > 0 ? text[index - 1]! : "";
+    if (LETTER.test(char) && !ALNUM.test(previous)) {
+      const head = stickyMatch(IDENTIFIER_HEAD, text, index);
+      let end = index + head.length;
+      if (DIGIT.test(head)) {
+        // Version parts ("v2.3.1"), but never one that is really a percentage
+        // after a full stop ("Q3.90%" is Q3 then 90%).
+        for (let part = stickyMatch(VERSION_PART, text, end); part; part = stickyMatch(VERSION_PART, text, end)) {
+          const after = text[end + part.length] ?? "";
+          if (after === "%" || ALNUM.test(after)) break;
+          end += part.length;
+        }
+        const magnitude = stickyMatch(TRAILING_MAGNITUDE, text, end);
+        onIdentifier(text.slice(index, end), magnitude);
+        end += magnitude.length;
+      }
+      index = end;
+    } else if (DIGIT.test(char)) {
+      const figure = stickyMatch(FIGURE_RUN, text, index);
+      const glued = ALNUM.test(previous) ? "" : stickyMatch(DIGIT_LED, text, index);
+      if (glued.length > figure.length) {
+        const magnitude = stickyMatch(TRAILING_MAGNITUDE, text, index + glued.length);
+        onIdentifier(glued, magnitude);
+        index += glued.length + magnitude.length;
+        continue;
+      }
+      const beforePrevious = index > 1 ? text[index - 2]! : "";
+      const leadingPoint = previous === "." && !DIGIT.test(beforePrevious);
+      // The sign sits before the figure, or before its bare leading point
+      // ("-.5%" keeps both; QA, PR #19 @ caa4ff6). A glued "+" is a sign too,
+      // so "+40%" is not backed by "-40%". Neither follows a letter or digit
+      // ("COVID-19", "40-50%") or the "++" of a name ("C++40"). A typed
+      // plus-minus keeps its minus ("+-20%" is not backed by "20%"; Sam,
+      // PR #19 @ 5352312).
+      const signAt = leadingPoint ? index - 2 : index - 1;
+      const signChar = signAt >= 0 ? text[signAt]! : "";
+      const beforeSign = signAt > 0 ? text[signAt - 1]! : "";
+      const twoBefore = signAt > 1 ? text[signAt - 2]! : "";
+      const signGlued = ALNUM.test(beforeSign) || (beforeSign === "+" && (twoBefore === "+" || ALNUM.test(twoBefore)));
+      const sign = signGlued ? "" : SIGN.test(signChar) ? "-" : signChar === "+" ? "+" : "";
+      const run = normalizeRun(figure);
+      onRun(`${sign}${leadingPoint ? "." : ""}${run}`);
+      index += figure.length;
+    } else {
+      index += 1;
+    }
+  }
+}
+
+/**
+ * Every whole identifier `text` names, read once per evidence line instead of
+ * searched once per claim identifier (Sam, PR #18 @ 442d7e1: 'a1.a1.' claims
+ * against a 200 KB 'a1a1…' profile took 6 s). Same rule as before: an
+ * identifier counts only as a whole alphanumeric run with all its version
+ * parts ("v2.3.1" names "v2.3.1", not "v2"; "2024Q3" does not name "Q3"),
+ * and with each % or + that follows it ("M365%" when the text says "M365%").
+ */
+function identifierSet(text: string): Set<string> {
+  const ids = new Set<string>();
+  let index = 0;
+  while (index < text.length) {
+    if (!ALNUM.test(text[index]!)) {
+      index += 1;
+      continue;
+    }
+    let end = index + stickyMatch(ALNUM_RUN, text, index).length;
+    for (let part = stickyMatch(VERSION_PART, text, end); part; part = stickyMatch(VERSION_PART, text, end)) end += part.length;
+    const token = text.slice(index, end);
+    if (DIGIT.test(token) && LETTER.test(token) && !ALNUM.test(text[end] ?? "")) {
+      ids.add(token);
+      const magnitude = stickyMatch(TRAILING_MAGNITUDE, text, end);
+      const percent = /^\s?%/.exec(magnitude)?.[0];
+      for (const suffix of new Set([percent, magnitude, magnitude === "+" ? "+" : undefined])) {
+        if (!suffix) continue;
+        const after = text[end + suffix.length] ?? "";
+        const next = text[end + suffix.length + 1] ?? "";
+        if (!ALNUM.test(after) && !(after === "." && DIGIT.test(next))) ids.add(token + suffix);
+      }
+    }
+    index = end;
+    while (index < text.length && ALNUM.test(text[index]!)) index += 1;
+  }
+  return ids;
+}
+
+/** One cited evidence line, read once per review (Sam, PR #18 @ 442d7e1). */
+export interface PreparedEvidence {
+  /** Identifiers as written: used when a letter follows a digit, where case can be a magnitude ("by2M"). */
+  exactIds: Set<string>;
+  /** Identifiers lowercased: "ABC123" names "abc123". */
+  loweredIds: Set<string>;
+  /** Figure keys the line backs (see evidenceFigures). */
+  figures: Set<string>;
+}
+
+export function prepareEvidence(text: string): PreparedEvidence {
+  const exact = asciiDigits(text);
+  return { exactIds: identifierSet(exact), loweredIds: identifierSet(exact.toLowerCase()), figures: evidenceFigures(exact) };
+}
+
+/**
+ * True when the evidence names `id` as a whole identifier. Case is ignored
+ * ("ABC123" is "abc123") unless a letter follows a digit, where case can be a
+ * magnitude ("by2M" is not "by2m"; QA, PR #18 @ 82438a7).
+ */
+function namesIdentifier(evidence: readonly PreparedEvidence[], id: string): boolean {
+  if (/\d[A-Za-z]/.test(id)) return evidence.some((item) => item.exactIds.has(id));
+  const lowered = id.toLowerCase();
+  return evidence.some((item) => item.loweredIds.has(lowered));
+}
+
+/** The figures in a run, keeping a sign and a bare leading point ("-40%", "+40%", ".5x", "-.5%") on the first. */
+function figureParts(run: string): string[] {
+  const lead = /^[-+]?\.?/.exec(run)![0];
+  const parts = [...run.slice(lead.length).matchAll(FIGURE_PART)].map((match) => match[0]);
+  if (lead && parts.length > 0) parts[0] = `${lead}${parts[0]}`;
+  return parts;
+}
+
+/**
+ * The figures in a claim, grouped by the run they were written in. Fail
+ * closed: every digit run is a figure unless it sits in an identifier that is
+ * on NUMERIC_IDENTIFIER_ALLOWLIST, is a version string, or that the cited
+ * evidence names verbatim. So "by90%", "up40%", "Q3e90%", "by2M" and "up3x"
+ * all need backing, as do ",90%", ".5x" and "Q3,90%"; "M365", "K8s",
+ * "ISO27001" and "v2.3.1" do not. Digits inside an identifier that is not
+ * skipped are checked one figure at a time.
+ */
+function claimFigures(claimText: string, evidence: readonly PreparedEvidence[]): Array<{ run: string; parts: string[] }> {
+  const groups: Array<{ run: string; parts: string[] }> = [];
+  scanFigures(
+    asciiDigits(claimText),
+    (id, magnitude) => {
+      // A % or + glued on makes it a figure ("v90%", "win10%"): only evidence
+      // naming the identifier with the same suffix lets it through.
+      if (magnitude ? namesIdentifier(evidence, `${id}${magnitude}`) : NUMERIC_IDENTIFIER_ALLOWLIST.has(id.toLowerCase()) || VERSION_IDENTIFIER.test(id) || namesIdentifier(evidence, id)) return;
+      for (const match of `${id}${magnitude}`.matchAll(FIGURE_PART)) groups.push({ run: match[0], parts: [match[0]] });
+    },
+    (run) => groups.push({ run, parts: figureParts(run) }),
+  );
+  return groups;
+}
+
+/** The figures a claim must back, in order (see claimFigures). */
+export function numberTokens(text: string, evidence = ""): string[] {
+  return claimFigures(text, evidence ? [prepareEvidence(evidence)] : []).flatMap((group) => group.parts);
+}
+
+/** The figures in `claim` that no cited evidence line backs. */
+function unbackedFigures(claim: string, evidence: readonly PreparedEvidence[]): string[] {
+  const backed = (token: string) => evidence.some((item) => item.figures.has(figureKey(token)));
+  return claimFigures(claim, evidence).flatMap(({ run, parts }) => (backed(run) ? [] : parts.filter((part) => !backed(part))));
+}
+
+/** Compare figures by value as written: k/K and x/X fold, a bare leading point means 0. */
+function figureKey(token: string): string {
+  return token.replace(/^([-+]?)\./, "$10.").replace(/K/g, "k").replace(/X/g, "x");
+}
+
+/**
+ * The figures stated in evidence, read with the same scanner as claims. Digits
+ * inside an identifier ("Q3", "K8s", "M365", "SHA256", "2FA", "5G") are never
+ * a figure, so "in Q3" cannot back "3 teams" (QA, PR #18 @ 31e1b4a). A figure
+ * also backs itself without its trailing + ("100+" backs "100"), and a signed
+ * one backs its unsigned value (evidence "-40% cost" backs "cut cost by
+ * 40%"). A % never drops: "90% of tenants" does not back "90 teams" (QA, PR
+ * #18 @ 442d7e1), and a suffix or multiplier never drops ("10k" does not back
+ * "10"). A claim's sign is kept, so "-40%" needs a signed figure.
+ */
+function evidenceFigures(evidence: string): Set<string> {
+  const keys = new Set<string>();
+  scanFigures(
+    evidence,
+    () => {},
+    (run) => {
+      const key = figureKey(run);
+      // A signed figure backs its value ("-40%" backs "cut by 40%"); an
+      // unsigned one also backs "+40%"; "-40%" never backs "+40%".
+      for (const value of /^[-+]/.test(key) ? [key, key.slice(1)] : [key, `+${key}`]) {
+        keys.add(value);
+        keys.add(value.replace(/\+$/, ""));
+      }
+    },
+  );
+  return keys;
+}
+
+/** A responsibility, achievement or project line: what the candidate did, not a label or a header. */
+const WORK_EVIDENCE = /^profile:(?:experience:\d+:(?:responsibility|achievement):\d+|project:[a-z0-9_-]+)$/;
+
+function isWorkEvidence(id: string): boolean {
+  return WORK_EVIDENCE.test(id);
+}
+
+/** Specific tool and technology names in `text` (umbrella terms such as "cloud" do not count). */
+function toolNames(text: string): string[] {
+  const found = SKILL_TERMS.filter((term) => !GENERIC_SKILL_TERMS.has(term) && containsSkillTerm(text, term));
+  // "Defender for Endpoint" is one tool, not also "Defender" and "endpoint".
+  return found.filter((term) => !found.some((other) => other !== term && other.length > term.length && containsSkillTerm(other, term)));
 }
 
 function splitSentences(text: string): string[] {
@@ -414,6 +762,131 @@ export function disclosesGap(sentence: string): boolean {
   return GAP_DISCLOSURE.test(sentence);
 }
 
+/**
+ * A disclosure licenses only the clause it sits in (QA, PR #18 @ 31e1b4a).
+ * "Although new to Kubernetes, I run it in production" discloses in its first
+ * clause and claims in its second, so a sentence-level disclosesGap() let the
+ * claim through whenever the term was declared in honestGaps. A sentence
+ * claims `mentions` when any clause:
+ * - names it before "rather than" / "instead of" ("I run X rather than VMs");
+ * - names it without disclosing a limit ("but I have deployed K8s");
+ * - refers back to it ("it", "them") with a hands-on verb in a first-person
+ *   sentence, without disclosing or talking about learning it ("…, I run it in
+ *   production"). "…, but it is on my list" is not a claim.
+ */
+const CLAUSE_BREAK = /\s*(?:[,;:()]|\s[-–—]\s|\b(?:but|although|though|while|whereas|yet|however|and|so)\b)\s*/i;
+const CONTRAST = /\b(?:rather than|instead of)\b/i;
+/**
+ * "it", "them", a demonstrative noun phrase ("this platform", "that tool"), or
+ * a bare "that"/"this" that ends a hands-on phrase ("I run that daily"; QA, PR
+ * #19 @ caa4ff6).
+ */
+const BACK_REFERENCE = /\b(?:(?:it|them)\b|(?:this|that|these|those|the same)\s+(?:platform|platforms|tool|tools|technology|stack|orchestrator|system|systems|one|ones)\b|(?:run|ran|running|runs|use[sd]?|using|deploy\w*|manag\w*|operat\w*|administ\w*|maintain\w*|own(?:ed|ing|s)?|support\w*)\s+(?:that|this|those|these)(?=\s+(?:daily|weekly|every|in\s+production|for\s+clients|today|now)\b|\s*[.,;!?]|\s*$))/i;
+/** A sentence that opens with "That"/"This" continues a back-reference chain ("That is on my list."). */
+const CHAIN_OPENER = /^\s*(?:that|this)\b/i;
+/** Wanting or starting to learn, not having learned ("I learned to run it in 2019" is a claim; QA, PR #19 @ caa4ff6). */
+const LEARNING = /\blearn(?:s|ing)?\b/i;
+const HANDS_ON = /\b(?:run|ran|running|runs|use[sd]?|using|deploy\w*|manag\w*|buil[dt]\w*|operat\w*|administ\w*|maintain\w*|own(?:ed|ing|s)?|led|lead\w*|ship\w*|configur\w*|migrat\w*|automat\w*|design\w*|implement\w*|support\w*|work(?:ed|ing)?\s+(?:with|on))\b/i;
+
+/**
+ * Nouns and adjectives that claim a skill without a verb ("…experience with
+ * it", "I am proficient in it"; Sam, PR #18 @ 442d7e1). Read only next to a
+ * back-reference, and never in a clause that wants to gain the skill.
+ */
+const CLAIM_WORD = /\b(?:experience[ds]?|expertise|expert|proficien\w*|skilled|familiar\w*|fluent|background|track record|certified|hands-on|years)\b/i;
+const ASPIRATION = /\b(?:learn\w*|gain\w*|keen|eager|hope|hoping|would (?:like|love)|want\w*|plan\w*|aim\w*|look(?:ing)? forward)\b/i;
+/**
+ * A claim word the writer already holds: "my years of experience with it", "I
+ * have expertise in it". An aspiration word elsewhere in the clause ("I am
+ * eager to apply my years of experience with it") does not cancel it (QA, PR
+ * #19 @ caa4ff6).
+ */
+const HELD_CLAIM = new RegExp(`\\b(?:my|I\\s+(?:have|had|hold|bring|own)|I['’](?:ve|d))\\b(?:\\s+\\S+){0,4}?\\s+${CLAIM_WORD.source.replace(/^\\b/, "")}`, "i");
+/**
+ * A first-person hands-on verb after a disclosure in the same clause: "I have
+ * not used Helm with the Kubernetes clusters I run in production." discloses
+ * Helm and claims Kubernetes (Sam, PR #18 @ 442d7e1). Fails closed: "I have
+ * not run Kubernetes the way I run Swarm" is flagged too and must be reworded.
+ *
+ * Contractions, "we" and "my team" count as the candidate too, and so do
+ * "been", "personally", "daily" and similar adverbs ("…the Kubernetes clusters
+ * I've run", "…I'm running", "…we run", "…I have been running"; QA, PR #19 @
+ * caa4ff6).
+ */
+const LATER_HANDS_ON = new RegExp(`\\b(?:I(?:['’](?:ve|m|d))?|we(?:['’](?:ve|re))?|my\\s+team)\\s+(?:(?:also|already|now|currently|still|do|did|have|had|has|am|was|were|are|been|personally|daily|routinely|regularly|actively|jointly)\\s+)*${HANDS_ON.source}`, "i");
+
+function claimsBackReference(clause: string): boolean {
+  if (!BACK_REFERENCE.test(clause) || disclosesGap(clause)) return false;
+  if (HANDS_ON.test(clause) && !LEARNING.test(clause)) return true;
+  return CLAIM_WORD.test(clause) && (!ASPIRATION.test(clause) || HELD_CLAIM.test(clause));
+}
+
+function disclosesThenClaims(clause: string): boolean {
+  const disclosure = GAP_DISCLOSURE.exec(clause);
+  return Boolean(disclosure) && LATER_HANDS_ON.test(clause.slice(disclosure!.index + disclosure![0].length));
+}
+
+export function sentenceClaims(sentence: string, mentions: (text: string) => boolean): boolean {
+  if (!mentions(sentence)) return false;
+  const firstPerson = FIRST_PERSON.test(sentence);
+  return sentence.split(CLAUSE_BREAK).filter(Boolean).some((clause) => {
+    const contrast = CONTRAST.exec(clause);
+    if (contrast) return mentions(clause.slice(0, contrast.index));
+    if (disclosesGap(clause)) return mentions(clause) && disclosesThenClaims(clause);
+    if (mentions(clause)) return true;
+    return firstPerson && claimsBackReference(clause);
+  });
+}
+
+/**
+ * True when the letter `text` claims `mentions` (QA, PR #18 @ 82438a7). A
+ * sentence that only describes the employer claims nothing by itself; a
+ * declared gap licenses disclosure clause by clause (sentenceClaims); and a
+ * sentence that refers back to the term named in the sentence before it ("I
+ * have not used Kubernetes. However, I run it daily.") is read together with
+ * that sentence, so a full stop cannot split a disclosure from its claim.
+ */
+function letterClaims(text: string, mentions: (text: string) => boolean, declared: boolean): boolean {
+  const sentences = splitSentences(text);
+  return sentences.some((sentence, index) => {
+    if (mentions(sentence)) return !aboutEmployerOnly(sentence) && (!declared || sentenceClaims(sentence, mentions));
+    return refersBackHandsOn(sentence) && antecedentMentions(sentences, index, mentions);
+  });
+}
+
+/**
+ * True when the sentence before `index` names the term, or a chain of
+ * sentences that each refer back with "it"/"them" leads to one that does
+ * ("I have not used Kubernetes. It is on my list. I run it daily."; Sam, PR
+ * #18 @ 442d7e1). A sentence with no back-reference ends the chain, so "I
+ * have not used Kubernetes. I run Swarm daily. I run it for every client."
+ * still passes.
+ */
+function antecedentMentions(sentences: readonly string[], index: number, mentions: (text: string) => boolean): boolean {
+  for (let previous = index - 1; previous >= 0; previous -= 1) {
+    if (mentions(sentences[previous]!)) return true;
+    if (!BACK_REFERENCE.test(sentences[previous]!) && !CHAIN_OPENER.test(sentences[previous]!)) return false;
+  }
+  return false;
+}
+
+/** A first-person clause that uses "it"/"them" with a hands-on verb or a claim word, outside a disclosure or learning. */
+function refersBackHandsOn(sentence: string): boolean {
+  return FIRST_PERSON.test(sentence) && sentence.split(CLAUSE_BREAK).some(claimsBackReference);
+}
+
+/**
+ * "Your team uses Kubernetes." describes the employer even without a posting
+ * cue. A sentence that describes who the team gets is about the candidate:
+ * "Your team gets a Kubernetes expert." (Sam, PR #18 @ 442d7e1).
+ */
+const CANDIDATE_REFERENCE = /\b(?:hire[ds]?|hiring|candidate|applicant|someone|engineer|this person|they|their|he|she|gets?|gains?|adds?|receives?|expert|specialist|professional|practitioner|operator|developer|architect|consultant|administrator|veteran)\b/i;
+function aboutEmployerOnly(sentence: string): boolean {
+  return describesEmployerOnly(sentence) || (!FIRST_PERSON.test(sentence)
+    && /^\s*your\s+(?:team|teams|company|organi[sz]ation|stack|platform|engineers|engineering|department|group|environment)\b/i.test(sentence)
+    && !CANDIDATE_REFERENCE.test(sentence));
+}
+
 function containsTerm(text: string, term: string): boolean {
   const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return escaped.length > 1 && new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
@@ -437,11 +910,17 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
   const draft = parsed.data;
   const findings: DraftFinding[] = [];
   const evidenceById = new Map(brief.evidence.map((item) => [item.id, item]));
+  const preparedById = new Map<string, PreparedEvidence>();
+  const prepared = (item: EvidenceItem): PreparedEvidence => {
+    let entry = preparedById.get(item.id);
+    if (!entry) preparedById.set(item.id, (entry = prepareEvidence(item.text)));
+    return entry;
+  };
   const used = new Set<string>();
   const cvText = [
     draft.cv.headline.text,
     draft.cv.summary.text,
-    ...draft.cv.skills.map((item) => item.text),
+    ...skillClaims(draft).map((item) => item.claim.text),
     ...draft.cv.experience.flatMap((entry) => entry.bullets.map((item) => item.text)),
     ...draft.cv.projects.flatMap((entry) => [entry.description.text, ...entry.highlights.map((item) => item.text)]),
   ].join(" ");
@@ -489,11 +968,14 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
     if (candidateRequired && !known.some((item) => item.source === "profile")) {
       findings.push({ severity: "error", code: "MISSING_PROFILE_EVIDENCE", message: "CV claims require profile evidence.", path });
     }
-    const evidenceText = known.map((item) => item.text).join(" ");
-    for (const token of numberTokens(claim.text)) {
-      if (!evidenceText.includes(token)) {
-        findings.push({ severity: "error", code: "UNSUPPORTED_NUMBER", message: `Number '${token}' is not present in the cited evidence.`, path });
-      }
+    // A CV claim states the candidate's own result, so its numbers must come from
+    // profile evidence. Citing job:posting lets the letter quote the employer
+    // ("your 400-engineer platform team"), never lend a figure to a CV line.
+    const numberSource = candidateRequired ? known.filter((item) => item.source === "profile") : known;
+    // Each evidence line is read once per review, not once per claim citing it.
+    const unbacked = unbackedFigures(claim.text, numberSource.map(prepared));
+    for (const token of unbacked) {
+      findings.push({ severity: "error", code: "UNSUPPORTED_NUMBER", message: `Number '${token}' is not present in the cited evidence.`, path });
     }
   }
 
@@ -518,15 +1000,57 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
   // Terraform in honestGaps, while "I have not used Terraform yet" passes
   // (issue #13). An undeclared gap may not appear in any candidate sentence.
   const declaredGaps = draft.strategy.honestGaps;
-  const candidateSentences = splitSentences(letterText).filter((sentence) => !describesEmployerOnly(sentence));
   // Briefs written before niceGaps existed have no such field.
   for (const gap of [...brief.gaps, ...(brief.niceGaps ?? [])]) {
     const skill = gap.replace(/^.*?:\s*/, "").replace(/\s+vs\s+.*$/, "").trim();
-    if (!skill || containsTerm(profileEvidenceText, skill)) continue;
+    // Work evidence that names the skill by an alias ("K8s") supports it: the
+    // matrix marks the row proven and the plan asks the writer to prove it.
+    if (!skill || containsTerm(profileEvidenceText, skill) || matchProfileSkill(skill, profileEvidenceText) === "alias") continue;
     const declared = declaredGaps.some((entry) => containsTerm(entry, skill));
-    const claimedInLetter = candidateSentences.some((sentence) => containsTerm(sentence, skill) && !(declared && disclosesGap(sentence)));
+    // A declared gap licenses disclosure clause by clause, not a whole sentence
+    // that also claims it ("Although new to Terraform, I run it in production").
+    const claimedInLetter = letterClaims(letterText, (text) => containsTerm(text, skill), declared);
     if (containsTerm(cvText, skill) || claimedInLetter) {
       findings.push({ severity: "error", code: "GAP_AS_CLAIM", message: `Draft claims an unsupported gap: ${skill}` });
+    }
+  }
+
+  // A requirement backed only by a saved skill label is not proven (the matrix
+  // marks it label-only), and the prompt keeps it out of the CV. The gap check
+  // above cannot see it: the label itself is profile evidence. Contract v2
+  // makes claiming it anywhere in the CV an error. Broad words ("automation",
+  // "security") are skipped: they describe work in ordinary prose and a
+  // matched work line rarely repeats them verbatim. Scrum, agile and AI are
+  // not skipped: each is a specific, checkable claim (a Scrum Master role,
+  // "built AI agents"), so LABEL_ONLY_EXEMPT_TERMS leaves them out. Briefs
+  // from before the matrix existed have no labelOnly list.
+  //
+  // The cover letter is scanned too, with the same sentence filter as
+  // GAP_AS_CLAIM: "I run Kubernetes in production." is a claim wherever it
+  // appears, while a sentence that only describes the employer, or one that
+  // discloses a declared gap ("I have not run Kubernetes in production"), is not.
+  // A term matches through its alias group, so "K8s" counts as Kubernetes.
+  if (draft.version === 2) {
+    const mentions = (text: string, term: string) => {
+      const match = matchProfileSkill(term, text);
+      return match === "exact" || match === "alias";
+    };
+    const terms = (brief.evidenceMatrix?.labelOnly ?? []).filter((item) => !LABEL_ONLY_EXEMPT_TERMS.has(normalizeSkillText(item)));
+    for (const term of terms) {
+      const message = `'${term}' is backed only by a saved skill label, not by any responsibility, achievement or project; leave it out of the CV or add the work that proves it to the profile.`;
+      for (const { path, claim, candidateRequired } of allClaims(draft)) {
+        if (candidateRequired && mentions(claim.text, term)) {
+          findings.push({ severity: "error", code: "LABEL_ONLY_CLAIM", message, path });
+        }
+      }
+      // As for GAP_AS_CLAIM, only a term declared in strategy.honestGaps
+      // licenses a disclosure sentence; an undeclared one is a claim even next
+      // to "rather than" or "I have not used Helm".
+      const declared = declaredGaps.some((entry) => mentions(entry, term));
+      for (const [index, paragraph] of draft.coverLetter.paragraphs.entries()) {
+        const claimed = letterClaims(paragraph.text, (text) => mentions(text, term), declared);
+        if (claimed) findings.push({ severity: "error", code: "LABEL_ONLY_CLAIM", message, path: `coverLetter.paragraphs.${index}` });
+      }
     }
   }
 
@@ -545,6 +1069,161 @@ export function reviewApplicationDraft(draftInput: unknown, brief: ApplicationBr
       findings.push({ severity: "error", code: "BANNED_PHRASE", message: `Banned phrase '${hit.match}' (${hit.phrase}). ${hit.hint}`, path });
     }
   }
+  // Never invent metrics (AUDIT.md §4 hard rule, F7). A placeholder such as
+  // "X%" or "[metric]" carries no digits, so UNSUPPORTED_NUMBER never saw it.
+  for (const { path, claim } of allClaims(draft)) {
+    for (const hit of findPlaceholderMetrics(claim.text)) {
+      findings.push({ severity: "error", code: "PLACEHOLDER_METRIC", message: `Placeholder metric '${hit.match}'. Use a number from the cited evidence, or state the scope or concrete result instead.`, path });
+    }
+  }
+
+  // Section rubrics (src/section-rubrics.ts). Contract v2 enforces the
+  // evidence rules as errors; v1 drafts predate them and get warnings, so
+  // existing drafts still review and render.
+  const rubricSeverity: DraftFinding["severity"] = draft.version === 2 ? "error" : "warning";
+  // A skill label cited as its own evidence proves nothing (AUDIT.md F6).
+  for (const { path, claim } of skillClaims(draft)) {
+    if (!claim.evidenceIds.some(isWorkEvidence)) {
+      findings.push({ severity: rubricSeverity, code: "SKILL_SELF_CITED", message: `Skill '${claim.text}' cites no experience, achievement or project evidence; a profile:skill label is not proof of use.`, path });
+    }
+  }
+  if (draft.version === 2) {
+    // The summary must carry one concrete proof, not identity or labels (F3).
+    if (!draft.cv.summary.evidenceIds.some(isWorkEvidence)) {
+      findings.push({ severity: "error", code: "SUMMARY_WITHOUT_PROOF", message: "The summary cites no responsibility, achievement or project; tie its proof to a direct-work row of the evidence matrix.", path: "cv.summary" });
+    }
+    // A bullet under a role must cite a line of work, not the role header or a skill label (F7).
+    for (const [index, entry] of draft.cv.experience.entries()) {
+      for (const [bulletIndex, bullet] of entry.bullets.entries()) {
+        if (!bullet.evidenceIds.some(isWorkEvidence)) {
+          findings.push({ severity: "error", code: "BULLET_WITHOUT_WORK_EVIDENCE", message: "Experience bullets must cite the responsibility, achievement or employer-linked project they restate.", path: `cv.experience.${index}.bullets.${bulletIndex}` });
+        }
+      }
+    }
+  }
+  const summaryTools = toolNames(draft.cv.summary.text);
+  if (summaryTools.length > 4) {
+    findings.push({ severity: "warning", code: "SUMMARY_TOOL_LIST", message: `The summary names ${summaryTools.length} tools (${summaryTools.join(", ")}); keep it a value proposition and move the list to Skills.`, path: "cv.summary" });
+  }
+  const headline = draft.cv.headline.text.trim();
+  const profileHeadline = evidenceById.get("profile:identity:headline")?.text;
+  if (/\|/.test(headline) || headline.split(",").length > 3 || toolNames(headline).length > 3) {
+    findings.push({ severity: "warning", code: "HEADLINE_KEYWORD_LIST", message: "The headline reads as a keyword list; name the target role and one or two differentiating domains.", path: "cv.headline" });
+  } else if (profileHeadline && headline.toLowerCase() === profileHeadline.trim().toLowerCase()) {
+    findings.push({ severity: "warning", code: "HEADLINE_COPIED", message: "The headline copies the profile headline; tailor it to this posting's role.", path: "cv.headline" });
+  }
+  for (const [index, entry] of draft.cv.experience.entries()) {
+    for (const [bulletIndex, bullet] of entry.bullets.entries()) {
+      const path = `cv.experience.${index}.bullets.${bulletIndex}`;
+      const bulletWords = words(bullet.text);
+      if (bulletWords > 30) findings.push({ severity: "warning", code: "BULLET_LENGTH", message: `Bullet is ${bulletWords} words; keep one requirement per bullet in at most 30.`, path });
+      const tools = toolNames(bullet.text);
+      if (tools.length > 4) findings.push({ severity: "warning", code: "BULLET_TOOL_LIST", message: `Bullet names ${tools.length} tools; name the method that mattered and move the rest to Skills.`, path });
+    }
+  }
+  // One line of evidence, one priority (AUDIT.md F8).
+  const prioritySeen = new Set<string>();
+  for (const priority of draft.strategy.evidencePriorities) {
+    if (prioritySeen.has(priority.evidenceId)) {
+      findings.push({ severity: "warning", code: "DUPLICATE_PRIORITY", message: `${priority.evidenceId} is listed more than once in evidencePriorities; list each line once with every requirement it proves.`, path: "strategy.evidencePriorities" });
+    }
+    prioritySeen.add(priority.evidenceId);
+  }
+
+  // A v1 draft against a v2 brief would turn the rubric evidence rules above
+  // into warnings (Sam, PR #18 @ 75b71b3). It is an error (Sam, PR #19 @
+  // caa4ff6): a critic hint or a writer must not be able to opt out of the v2
+  // rules by downgrading. A brief without contractVersion (older than v2)
+  // still reviews v1 drafts as before.
+  if (draft.version === 1 && brief.contractVersion === 2) {
+    findings.push({ severity: "error", code: "CONTRACT_DOWNGRADE", message: "The brief asks for contract version 2 but the draft is version 1, and the skills, summary and bullet evidence rules only apply to version 2; redraft as version 2." });
+  }
+
+  // Raw paraphrase (AUDIT.md §4.2 experience fails, §4.6): a bullet that copies
+  // its responsibility line, or the posting, restates a duty instead of
+  // proving work. Achievements are outcomes and may be restated as written.
+  const postingText = evidenceById.get("job:posting")?.text ?? "";
+  const postingGrams = postingText ? trigrams(postingText) : new Set<string>();
+  const responsibilityGrams = brief.evidence
+    .filter((item) => /^profile:experience:\d+:responsibility:\d+$/.test(item.id))
+    .map((item) => [item.id, trigrams(item.text)] as const);
+  // Index the responsibility trigrams once, so each bullet costs its own
+  // trigrams times the lines sharing them, not every line times the bullet
+  // (Sam, PR #19 @ 5352312: 40k short lines x 35 bullets took 29 s).
+  const linesByGram = new Map<string, number[]>();
+  for (const [line, [, grams]] of responsibilityGrams.entries()) {
+    for (const gram of grams) {
+      const lines = linesByGram.get(gram);
+      if (lines) lines.push(line);
+      else linesByGram.set(gram, [line]);
+    }
+  }
+  const responsibilityUnion = new Set(linesByGram.keys());
+  const copiedResponsibility = (text: string): string | undefined => {
+    // No single line can share more of the bullet than all lines together.
+    if (trigramOverlap(text, responsibilityUnion) < RAW_PARAPHRASE_THRESHOLD) return undefined;
+    const grams = trigrams(text);
+    const shared = new Map<number, number>();
+    for (const gram of grams) for (const line of linesByGram.get(gram) ?? []) shared.set(line, (shared.get(line) ?? 0) + 1);
+    let first: number | undefined;
+    for (const [line, count] of shared) if (count / grams.size >= RAW_PARAPHRASE_THRESHOLD && (first === undefined || line < first)) first = line;
+    return first === undefined ? undefined : responsibilityGrams[first]![0];
+  };
+  for (const [index, entry] of draft.cv.experience.entries()) {
+    for (const [bulletIndex, bullet] of entry.bullets.entries()) {
+      const path = `cv.experience.${index}.bullets.${bulletIndex}`;
+      // Every responsibility line, not only the cited ones: citing an
+      // achievement or a project must not hide a copied duty (QA, PR #19 @
+      // caa4ff6). Restating a cited achievement as written exempts only the
+      // duties the bullet does not cite: a copied duty the bullet cites is
+      // always flagged, even when a cited achievement contains it (Sam,
+      // PR #19 @ 5352312 LOW-1).
+      const copiedCited = bullet.evidenceIds
+        .filter((id) => /^profile:experience:\d+:responsibility:\d+$/.test(id))
+        .find((id) => trigramOverlap(bullet.text, trigrams(evidenceById.get(id)?.text ?? "")) >= RAW_PARAPHRASE_THRESHOLD);
+      const restatesAchievement = bullet.evidenceIds
+        .filter((id) => /^profile:experience:\d+:achievement:\d+$/.test(id))
+        .some((id) => trigramOverlap(bullet.text, trigrams(evidenceById.get(id)?.text ?? "")) >= RAW_PARAPHRASE_THRESHOLD);
+      const copied = copiedCited ?? (restatesAchievement ? undefined : copiedResponsibility(bullet.text));
+      if (copied) {
+        findings.push({ severity: rubricSeverity, code: "RAW_PARAPHRASE", message: `The bullet repeats ${copied} almost word for word. Rewrite it as action, method and result or scope instead of restating the duty.`, path });
+      } else if (trigramOverlap(bullet.text, postingGrams) >= RAW_PARAPHRASE_THRESHOLD) {
+        findings.push({ severity: rubricSeverity, code: "RAW_PARAPHRASE", message: "The bullet repeats the job posting almost word for word. State the work the cited evidence shows, in your own words.", path });
+      }
+    }
+  }
+  if (trigramOverlap(draft.cv.summary.text, postingGrams) >= RAW_PARAPHRASE_THRESHOLD) {
+    findings.push({ severity: rubricSeverity, code: "RAW_PARAPHRASE", message: "The summary repeats the job posting almost word for word; write the value proposition from the evidence matrix.", path: "cv.summary" });
+  }
+
+  // The first bullet of the first role proves mustProve[0] (AUDIT.md §4.2,
+  // F1). Checked only when the evidence matrix has a line for that
+  // requirement under the same role: otherwise the role cannot prove it and
+  // the rule does not apply. A bullet touches the requirement when it cites
+  // one of those lines or names the requirement (alias-aware).
+  const leadRequirement = brief.plan?.mustProve?.[0];
+  const firstRole = draft.cv.experience[0];
+  const firstBullet = firstRole?.bullets[0];
+  if (leadRequirement && firstRole && firstBullet) {
+    const key = normalizeSkillText(leadRequirement);
+    const row = brief.evidenceMatrix?.rows.find((item) => normalizeSkillText(item.requirement) === key);
+    const roleLines = (row?.evidence ?? []).filter((item) => item.experienceIndex === firstRole.sourceIndex).map((item) => item.evidenceId);
+    if (roleLines.length > 0) {
+      const match = matchProfileSkill(leadRequirement, firstBullet.text);
+      const named = match === "exact" || match === "alias" || match === "implied";
+      if (!named && !firstBullet.evidenceIds.some((id) => roleLines.includes(id))) {
+        findings.push({ severity: rubricSeverity, code: "FIRST_BULLET_OFF_THESIS", message: `The first bullet of the first role does not prove the top requirement '${leadRequirement}'. Lead with the work that proves it (${roleLines.slice(0, 3).join(", ")}).`, path: "cv.experience.0.bullets.0" });
+      }
+    }
+  }
+
+  // Three or more adjectives before a noun reads as filler (AUDIT.md §4.2 patterns).
+  for (const { path, claim } of allClaims(draft)) {
+    for (const stack of findAdjectiveStacks(claim.text)) {
+      findings.push({ severity: "warning", code: "ADJECTIVE_STACK", message: `'${stack.match}' stacks ${stack.adjectives.length} adjectives; keep the one the evidence proves, or replace them with the scope or result.`, path });
+    }
+  }
+
   // The same lead verb on more than two bullets reads as a template.
   const leadVerbs = new Map<string, number>();
   for (const entry of draft.cv.experience) {

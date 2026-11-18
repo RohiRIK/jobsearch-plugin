@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: cv-summary-not-generic
+context:
+  scaffold_script: seed.sh

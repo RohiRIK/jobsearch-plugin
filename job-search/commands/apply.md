@@ -9,7 +9,7 @@ Use the shared application workflow for `$ARGUMENTS`, which may be a job-posting
 
 <workflow>
 1. Load the `cv` skill (`${CLAUDE_PLUGIN_ROOT}/skills/cv/SKILL.md`, the canonical workflow). Its linked `${CLAUDE_PLUGIN_ROOT}/skills/cv/EvidenceGroundedPilot.md` maintains the source, eligibility and final QA procedure.
-2. Follow the workflow end to end: evaluate fit, run `jobsearch prepare`, draft both documents with the current host LLM, run `jobsearch review` until it passes, then run `jobsearch render --yes` once the user has chosen a layout. For a second opinion on content, hand both drafts inline to the `reviewer` agent.
+2. Follow the workflow end to end: evaluate fit, run `jobsearch prepare`, draft both documents with the current host LLM, run `jobsearch review` until it passes, then run `jobsearch render --yes` once the user has chosen a layout. Before render, hand `critique.prompt` from `jobsearch review` to the `reviewer` agent (or answer it inline), pass its JSON back with `jobsearch review --critique`, and follow `critique.next`.
 3. Compile and inspect both PDFs, then iterate on `jobsearch gate --company <company> --role <role>` until every required gate passes.
 </workflow>
 

@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ApplicationDraft, buildApplicationBrief, reviewApplicationDraft } from "../../src/application-draft.js";
+import { critiqueDraft } from "../../src/critique.js";
 import type { FitReport } from "./fit.js";
 import { PROFILE_LINKS, renderCoverLetterTypst, renderCvTypst, selectedLinks, type ProfileLink } from "../../src/application-renderers.js";
 import { detectMarket, getMarketProfile, resolvePostingLanguage } from "../../src/market-profiles.js";
@@ -24,7 +25,8 @@ USAGE
 
 COMMANDS
   prepare  Emit a provider-neutral LLM prompt bundle as JSON; writes nothing
-  review   Validate schema, evidence references, unsupported numbers, gaps, and style
+  review   Validate schema, evidence references, unsupported numbers, gaps, and style;
+           returns critique.prompt for the rubric critic and, with --critique, the next step
   render   Review, then write convention-named Typst CV + cover letter
 
 OPTIONS
@@ -32,6 +34,11 @@ OPTIONS
   --role <title>         Required for prepare; inferred from draft otherwise
   --job <file|->         Raw posting; '-' reads stdin
   --draft <file|->       ApplicationDraft JSON; '-' reads stdin
+  --critique <file>      review: the rubric critic's JSON answer to critique.prompt.
+                         render: optional; when given, render writes only if critique.next.action
+                         is ship (a passing critique of this exact draft). Without it, render does
+                         not run or require the critic: the critic is a workflow step, not a gate.
+  --round <n>            review/render: regeneration rounds already done (default 0, max 2)
   --profile <file>       Profile JSON (default: data/profile.json)
   --language <name>      Document language (default: the posting's own); on render, confirms a language that differs from it
   --market <code>        Force a market (de, dk, ch, ie...); detected from the posting otherwise
@@ -54,7 +61,9 @@ OUTPUT
 LLM FLOW
   1. Save prepare's .prompt text and send it to the LLM of your choice.
   2. Save the strict JSON response as draft.json.
-  3. Run review until pass=true, then render --compile and bun run reevaluate.
+  3. Run review; send critique.prompt to the critic and pass its JSON back with --critique.
+  4. Follow critique.next: regenerate only the failing sections (at most 2 rounds), or report
+     the remaining findings to the user. Then render --compile and bun run reevaluate.
 `;
 
 interface CliOptions {
@@ -62,6 +71,8 @@ interface CliOptions {
   role?: string;
   job?: string;
   draft?: string;
+  critique?: string;
+  round?: number;
   profile?: string;
   language?: string;
   market?: string;
@@ -82,6 +93,8 @@ interface ParsedValues {
   role?: string;
   job?: string;
   draft?: string;
+  critique?: string;
+  round?: string;
   profile?: string;
   language?: string;
   market?: string;
@@ -157,8 +170,10 @@ async function loadDraftAndBrief(options: CliOptions, profile: Profile): Promise
 
 async function review(options: CliOptions, profile: Profile): Promise<number> {
   const { draft, brief } = await loadDraftAndBrief(options, profile);
-  const result = reviewApplicationDraft(draft, brief);
-  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+  if (options.critique === "-" && (options.draft === "-" || options.job === "-")) throw new Error("--critique cannot read stdin together with --draft or --job");
+  const critiqueInput = options.critique ? JSON.parse(await readInput(options.critique, "critique")) : undefined;
+  const { review: result, critique } = critiqueDraft(draft, brief, reviewApplicationDraft(draft, brief), critiqueInput, options.round ?? 0);
+  process.stdout.write(JSON.stringify({ ...result, critique }, null, 2) + "\n");
   return result.pass ? 0 : 1;
 }
 
@@ -168,6 +183,23 @@ async function render(options: CliOptions, profile: Profile): Promise<number> {
   if (!reviewResult.pass) {
     process.stdout.write(JSON.stringify({ written: false, review: reviewResult }, null, 2) + "\n");
     return 1;
+  }
+  // Opt-in critic gate (Sam LOW-1, PR #19 @ caa4ff6). Fails closed: a critique
+  // that is unreadable, invalid, for another draft, or not passing writes nothing.
+  if (options.critique !== undefined) {
+    if (options.critique === "-" && (options.draft === "-" || options.job === "-")) throw new Error("--critique cannot read stdin together with --draft or --job");
+    let critiqueInput: unknown;
+    try {
+      critiqueInput = JSON.parse(await readInput(options.critique, "critique"));
+    } catch (cause) {
+      if (cause instanceof SyntaxError) critiqueInput = null;
+      else throw cause;
+    }
+    const { critique } = critiqueDraft(draft, brief, reviewResult, critiqueInput, options.round ?? 0);
+    if (critique.next.action !== "ship") {
+      process.stdout.write(JSON.stringify({ written: false, review: reviewResult, critique }, null, 2) + "\n");
+      return 1;
+    }
   }
   const blockingMissingFacts = brief.missingFacts.filter((fact) => ["candidate name", "email", "experience"].includes(fact));
   if (blockingMissingFacts.length > 0) return error("profile is incomplete for document rendering", "MISSING_PROFILE_FACTS", blockingMissingFacts);
@@ -307,6 +339,8 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
         role: { type: "string" },
         job: { type: "string" },
         draft: { type: "string" },
+        critique: { type: "string" },
+        round: { type: "string" },
         profile: { type: "string" },
         language: { type: "string" },
         market: { type: "string" },
@@ -338,6 +372,7 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
   if (!/^(prepare|review|render)$/.test(command)) return error(`unknown command: ${command}`, "BAD_COMMAND");
   if (parsed.positionals.length > 1) return error(`unexpected positional arguments: ${parsed.positionals.slice(1).join(" ")}`, "BAD_ARGS");
   if (values.date && !/^\d{4}-\d{2}-\d{2}$/.test(values.date)) return error("--date must be YYYY-MM-DD", "BAD_DATE");
+  if (values.round !== undefined && !/^[0-2]$/.test(values.round)) return error("--round must be 0, 1 or 2", "BAD_ROUND");
 
   const profilePath = resolve(process.cwd(), values.profile ?? DEFAULT_PROFILE);
   if (!existsSync(profilePath)) return error(`profile not found: ${profilePath}. Run: bun run profile`, "NO_PROFILE");
@@ -353,6 +388,8 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
     role: values.role,
     job: values.job,
     draft: values.draft,
+    critique: values.critique,
+    round: values.round === undefined ? undefined : Number(values.round),
     profile: values.profile,
     language: values.language,
     market: typeof values.market === "string" ? values.market : undefined,

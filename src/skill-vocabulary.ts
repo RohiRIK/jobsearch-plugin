@@ -88,6 +88,13 @@ export const SKILL_ALIAS_GROUPS: readonly SkillAliasGroup[] = [
     terms: ["microsoft graph", "microsoft graph api", "graph api", "ms graph"],
   },
   {
+    // "K8s" is the standard abbreviation; without it a label-only Kubernetes
+    // could be claimed as "K8s" past LABEL_ONLY_CLAIM (QA, PR #18 B2).
+    key: "kubernetes",
+    label: "Kubernetes",
+    terms: ["kubernetes", "k8s"],
+  },
+  {
     key: "dlp",
     label: "Data loss prevention",
     terms: ["dlp", "data loss prevention"],

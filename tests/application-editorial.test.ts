@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { buildApplicationBrief, reviewApplicationDraft } from "../src/application-draft.js";
 import { renderCvTypst, selectedLinks } from "../src/application-renderers.js";
 import { detectMarket, detectTextLanguage, getMarketProfile, resolvePostingLanguage } from "../src/market-profiles.js";
-import { applicationPosting, applicationProfile, validApplicationDraft } from "./fixtures/application.js";
+import { applicationPosting, applicationProfile, validApplicationDraft, validApplicationDraftV2 } from "./fixtures/application.js";
 
 // Issue #8: editorial defects the gates did not catch.
 const brief = buildApplicationBrief({ profile: applicationProfile, posting: applicationPosting, company: "Acme", role: "Platform Engineer" });
@@ -105,7 +105,7 @@ describe("render language decision", () => {
     mkdirSync(join(dir, "home", "data"), { recursive: true });
     writeFileSync(join(dir, "home", "data", "profile.json"), JSON.stringify(applicationProfile));
     writeFileSync(join(dir, "job.txt"), DANISH);
-    const draft = validApplicationDraft();
+    const draft = validApplicationDraftV2();
     draft.role = "Sikkerhedsarkitekt";
     draft.company = "Kommune";
     // The fixture's portfolio project is not matched to this posting, so it cannot be cited.

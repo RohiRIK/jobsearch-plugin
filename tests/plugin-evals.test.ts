@@ -8,7 +8,7 @@ const fm = (text: string) => text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
 
 describe("plugin eval suite", () => {
   test("has the cases the efficiency report relies on", () => {
-    expect(cases.sort()).toEqual(["manage-health", "not-a-job-request", "prepare-brief", "rank-saved-postings", "triage-one-posting", "where-is-my-data"]);
+    expect(cases.sort()).toEqual(["cv-summary-not-generic", "manage-health", "not-a-job-request", "prepare-brief", "rank-saved-postings", "skills-grouped-by-jd", "triage-one-posting", "where-is-my-data"]);
   });
 
   for (const c of cases) {

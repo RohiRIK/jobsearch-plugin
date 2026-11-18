@@ -87,11 +87,21 @@ export function renderCvTypst(input: {
   ].filter((value): value is string => Boolean(value));
   const languages = identity.languages ?? [];
   const skillGroups = new Map<string, string[]>();
-  for (const skill of draft.cv.skills) {
-    const evidenceId = skill.evidenceIds[0] ?? "";
-    const match = /^profile:skill:(\d+):\d+$/.exec(evidenceId);
-    const category = displaySkill(match ? profile.skills?.[Number(match[1])]?.category ?? "Skills" : "Skills");
-    skillGroups.set(category, [...(skillGroups.get(category) ?? []), displaySkill(skill.text)]);
+  if (draft.version === 2) {
+    // Contract v2: the draft names the groups in the posting's language and
+    // orders them (AUDIT.md §4.4). Re-grouping by profile category would undo
+    // the tailoring.
+    for (const group of draft.cv.skills) {
+      const label = displaySkill(group.group);
+      skillGroups.set(label, [...(skillGroups.get(label) ?? []), ...group.items.map((item) => displaySkill(item.text))]);
+    }
+  } else {
+    for (const skill of draft.cv.skills) {
+      const evidenceId = skill.evidenceIds[0] ?? "";
+      const match = /^profile:skill:(\d+):\d+$/.exec(evidenceId);
+      const category = displaySkill(match ? profile.skills?.[Number(match[1])]?.category ?? "Skills" : "Skills");
+      skillGroups.set(category, [...(skillGroups.get(category) ?? []), displaySkill(skill.text)]);
+    }
   }
   const skills = [...skillGroups].map(([category, values]) =>
     `(label: ${quoted(category)}, value: ${quoted(values.join(", "))})`

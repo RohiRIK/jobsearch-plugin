@@ -195,7 +195,7 @@ async function runPrepare(values: Values): Promise<CommandResult> {
 }
 
 async function runReview(values: Values): Promise<CommandResult> {
-  const run = await runTool("application", ["review", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language"])]);
+  const run = await runTool("application", ["review", ...passThrough(values, ["draft", "job", "critique", "round", "profile", "company", "role", "market", "language"])]);
   if (run.json === undefined) throw toolFailure("application", run);
   const review = run.json as { pass?: boolean };
   return { data: review, exit: review.pass ? EXIT.ok : EXIT.verdictFailed };
@@ -210,14 +210,14 @@ async function runPortfolio(values: Values): Promise<CommandResult> {
 }
 
 async function runRender(values: Values): Promise<CommandResult> {
-  const reviewArgs = passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language"]);
+  const reviewArgs = passThrough(values, ["draft", "job", "critique", "round", "profile", "company", "role", "market", "language"]);
   const preview = confirmWrite(values, "render", `jobsearch render --draft ${JSON.stringify(str(values, "draft"))} --job ${JSON.stringify(str(values, "job"))}`);
   if (preview) {
     const run = await runTool("application", ["review", ...reviewArgs]);
     if (run.json === undefined) throw toolFailure("application", run);
     return { data: { dryRun: true, review: run.json, wouldWrite: "convention-named Typst CV + cover letter under <workspace>/assets/applications/" }, exit: EXIT.dryRun };
   }
-  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "project-links", "interests", "compile", "fit", "force"])]);
+  const run = await runTool("application", ["render", ...passThrough(values, ["draft", "job", "profile", "company", "role", "market", "language", "layout", "cv-template", "cl-template", "date", "links", "project-links", "interests", "critique", "round", "compile", "fit", "force"])]);
   if (run.json !== undefined) {
     const out = run.json as { written?: boolean };
     return { data: out, exit: run.code === 0 ? EXIT.ok : EXIT.verdictFailed };
@@ -406,12 +406,14 @@ export const CORE_COMMANDS: Record<string, CommandSpec> = {
     run: runPrepare,
   },
   review: {
-    summary: "Validate an ApplicationDraft: schema, evidence references, unsupported numbers, style. Exit 1 when it does not pass",
+    summary: "Validate an ApplicationDraft: schema, evidence references, unsupported numbers, style; returns critique.prompt for the rubric critic and critique.next. Exit 1 when it does not pass",
     mutation: false,
     output: "json",
     flags: {
       draft: { type: "string", required: true, description: "ApplicationDraft JSON file" },
       job: { type: "string", required: true, description: "Posting file" },
+      critique: { type: "string", description: "The rubric critic's JSON answer to critique.prompt" },
+      round: { type: "string", description: "Regeneration rounds already done: 0, 1 or 2" },
       profile: PROFILE_FLAG,
       company: { type: "string", description: "Override draft company" },
       role: { type: "string", description: "Override draft role" },
@@ -456,6 +458,8 @@ export const CORE_COMMANDS: Record<string, CommandSpec> = {
       role: { type: "string", description: "Override draft role" },
       market: { type: "string", description: "Force a market code" },
       language: { type: "string", description: "Document language; required to confirm one that differs from the posting's" },
+      critique: { type: "string", description: "The rubric critic's JSON for this draft; when given, render writes only if critique.next.action is ship" },
+      round: { type: "string", description: "Regeneration rounds already done: 0, 1 or 2 (with --critique)" },
       ...MUTATION_FLAGS,
     },
     run: runRender,

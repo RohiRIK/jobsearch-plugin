@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { applicationPosting, applicationProfile, validApplicationDraft } from "./fixtures/application.js";
+import { applicationPosting, applicationProfile, validApplicationDraftV2 } from "./fixtures/application.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 let dir: string;
@@ -28,7 +28,7 @@ describe("render and gate agree on where documents live", () => {
     mkdirSync(join(home, "data"), { recursive: true });
     writeFileSync(join(home, "data", "profile.json"), JSON.stringify(applicationProfile));
     writeFileSync(join(dir, "job.txt"), applicationPosting);
-    writeFileSync(join(dir, "draft.json"), JSON.stringify(validApplicationDraft()));
+    writeFileSync(join(dir, "draft.json"), JSON.stringify(validApplicationDraftV2()));
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
